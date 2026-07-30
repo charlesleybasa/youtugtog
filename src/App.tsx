@@ -412,13 +412,14 @@ export default function App() {
     }
     setAddError(false)
     setAddValue('')
+    // Already in the playlist: just clear the input. Never interrupt the
+    // track that's currently playing.
     if (tracks.some((t) => t.id === id)) {
-      setCurrentId(id)
       return
     }
+    // Append to the playlist only. The current track keeps playing; the new
+    // one waits until the user taps it.
     setTracks((prev) => [...prev, { id, title: 'Added from YouTube', artist: 'Tap to play' }])
-    setCurrentId(id)
-    setPlaying(true)
   }
 
   // drag-to-reorder: move the dragged track to occupy the target's slot
