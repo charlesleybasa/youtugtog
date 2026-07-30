@@ -1,0 +1,178 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap');
+@import 'tailwindcss';
+
+/* ---- Neumorphic theme tokens ---------------------------------------- */
+:root {
+  --bg: #e4e8f4;
+  --panel: #e4e8f4;
+  --sh-dark: #bcc3da;
+  --sh-light: #ffffff;
+  --text: #4a4f66;
+  --text-strong: #363b52;
+  --text-muted: #9aa0bd;
+  --accent: #f5317f;
+  --accent-soft: #ff8a2b;
+  --accent-contrast: #ffffff;
+  --art-glow: rgba(245, 49, 127, 0.3);
+}
+
+.dark {
+  --bg: #1e222b;
+  --panel: #1e222b;
+  --sh-dark: #14161c;
+  --sh-light: #282e3a;
+  --text: #c7ccdd;
+  --text-strong: #eef1f8;
+  --text-muted: #6d7590;
+  --accent: #f5317f;
+  --accent-soft: #ff8a2b;
+  --accent-contrast: #ffffff;
+  --art-glow: rgba(245, 49, 127, 0.42);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Poppins', system-ui, sans-serif;
+  transition:
+    background 0.5s ease,
+    color 0.5s ease;
+}
+
+.font-display {
+  font-family: 'Outfit', 'Poppins', sans-serif;
+}
+
+/* ---- Neumorphic primitives ------------------------------------------ */
+.neu {
+  background: var(--panel);
+  box-shadow:
+    9px 9px 18px var(--sh-dark),
+    -9px -9px 18px var(--sh-light);
+  transition:
+    box-shadow 0.4s ease,
+    background 0.5s ease,
+    transform 0.2s ease;
+}
+
+.neu-sm {
+  background: var(--panel);
+  box-shadow:
+    5px 5px 10px var(--sh-dark),
+    -5px -5px 10px var(--sh-light);
+  transition:
+    box-shadow 0.4s ease,
+    background 0.5s ease,
+    transform 0.15s ease,
+    color 0.3s ease;
+}
+
+.neu-inset {
+  background: var(--panel);
+  box-shadow:
+    inset 5px 5px 11px var(--sh-dark),
+    inset -5px -5px 11px var(--sh-light);
+  transition:
+    box-shadow 0.4s ease,
+    background 0.5s ease;
+}
+
+/* pressable buttons: raise, then sink when active */
+.neu-btn {
+  background: var(--panel);
+  box-shadow:
+    6px 6px 12px var(--sh-dark),
+    -6px -6px 12px var(--sh-light);
+  transition:
+    box-shadow 0.25s ease,
+    background 0.5s ease,
+    transform 0.15s ease,
+    color 0.3s ease;
+}
+.neu-btn:hover {
+  transform: translateY(-1px);
+}
+.neu-btn:active,
+.neu-btn.is-pressed {
+  box-shadow:
+    inset 4px 4px 9px var(--sh-dark),
+    inset -4px -4px 9px var(--sh-light);
+  transform: translateY(0);
+}
+
+.accent-btn {
+  background: linear-gradient(145deg, var(--accent-soft), var(--accent));
+  color: var(--accent-contrast);
+  box-shadow:
+    6px 6px 14px var(--sh-dark),
+    -6px -6px 14px var(--sh-light),
+    inset 0 0 0 rgba(0, 0, 0, 0);
+  transition:
+    box-shadow 0.25s ease,
+    transform 0.15s ease;
+}
+.accent-btn:hover {
+  transform: translateY(-1px);
+}
+.accent-btn:active {
+  box-shadow:
+    inset 4px 4px 9px rgba(150, 30, 80, 0.55),
+    inset -4px -4px 9px rgba(255, 170, 90, 0.55);
+}
+
+/* swipe-to-delete red reveal behind list rows */
+.swipe-row {
+  touch-action: pan-y;
+  transition: transform 0.18s ease;
+}
+.swipe-row.dragging {
+  transition: none;
+}
+
+/* rotating vinyl */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.spinning {
+  animation: spin 8s linear infinite;
+}
+.spin-paused {
+  animation-play-state: paused;
+}
+
+/* marquee for long artist names */
+@keyframes marquee {
+  0%,
+  12% {
+    transform: translateX(0);
+  }
+  88%,
+  100% {
+    transform: translateX(var(--marquee-shift, 0));
+  }
+}
+
+/* hidden scrollbars until scroll */
+.soft-scroll {
+  scrollbar-width: none;
+}
+.soft-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+input::placeholder {
+  color: var(--text-muted);
+}
+input:focus {
+  outline: none;
+}
