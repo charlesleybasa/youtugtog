@@ -1,9 +1,23 @@
 import { defineConfig, type HtmlTagDescriptor, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { readFileSync } from 'node:fs'
 import path from 'node:path'
 
-import siteConfiguration from './.figma/make/site.json'
+// Figma Make stores site metadata in .figma/make/site.json. That file is
+// generated inside Figma and can be missing when the project is built in
+// another environment (e.g. Vercel), so load it defensively and fall back
+// to an empty configuration instead of failing the build on a hard import.
+function loadSiteConfiguration(): FigmaSiteConfiguration {
+  try {
+    const raw = readFileSync(path.resolve(__dirname, './.figma/make/site.json'), 'utf8')
+    return JSON.parse(raw) as FigmaSiteConfiguration
+  } catch {
+    return {}
+  }
+}
+
+const siteConfiguration = loadSiteConfiguration()
 
 // Vite config — https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
