@@ -1,4 +1,4 @@
-import { defineConfig, type HtmlTagDescriptor, type Plugin } from 'vite'
+import { defineConfig, loadEnv, type HtmlTagDescriptor, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { readFileSync } from 'node:fs'
@@ -23,6 +23,7 @@ const siteConfiguration = loadSiteConfiguration()
 export default defineConfig(({ mode }) => {
   // .figma/make/deploy-preview passes `--mode development` for cached-preview builds.
   const emitSourcemaps = mode === 'development'
+  const env = loadEnv(mode, process.cwd(), '')
 
   return {
     base: process.env.FIGMA_PUBLIC_URL ? `${process.env.FIGMA_PUBLIC_URL}/` : '/',
@@ -37,6 +38,7 @@ export default defineConfig(({ mode }) => {
       figmaErrorOverlayReplay(),
       figmaReactRefreshBoundaryFallback(),
       figmaMakeKitPlugin({ storiesGlob: '/src/**/*.stories.{ts,tsx,js,jsx}' }),
+      youtubeSearchProxy(env.YOUTUBE_API_KEY),
     ],
     resolve: {
       alias: {
@@ -45,13 +47,13 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       host: '0.0.0.0',
-      port: parseInt(process.env.PORT || '8443'),
-      strictPort: true,
+      port: process.env.PORT ? parseInt(process.env.PORT, 10) : 0,
+      strictPort: !!process.env.PORT,
       watch: { ignored: ['**/.figma/**'] },
     },
     preview: {
       host: '0.0.0.0',
-      port: parseInt(process.env.PORT || '8443'),
+      port: process.env.PORT ? parseInt(process.env.PORT, 10) : 0,
     },
   }
 })
@@ -320,6 +322,59 @@ function figmaReactRefreshBoundaryFallback(): Plugin {
  * builds (`vite build`) skip it entirely so the route doesn't leak
  * into shipped bundles.
  */
+function youtubeSearchProxy(apiKey?: string): Plugin {
+  return {
+    name: 'youtube-search-proxy',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        const url = req.url ?? ''
+        const [pathname, rawQuery] = url.split('?')
+        if (pathname !== '/api/search') return next()
+        if (req.method !== 'GET') {
+          res.statusCode = 405
+          res.setHeader('Allow', 'GET')
+          res.setHeader('Content-Type', 'application/json; charset=utf-8')
+          res.end(JSON.stringify({ error: 'Method not allowed' }))
+          return
+        }
+
+        const params = new URLSearchParams(rawQuery ?? '')
+        const query = params.get('q')
+        if (!query) {
+          res.statusCode = 400
+          res.setHeader('Content-Type', 'application/json; charset=utf-8')
+          res.end(JSON.stringify({ error: 'Missing search query' }))
+          return
+        }
+
+        const key = apiKey ?? process.env.YOUTUBE_API_KEY
+        if (!key) {
+          res.statusCode = 500
+          res.setHeader('Content-Type', 'application/json; charset=utf-8')
+          res.end(JSON.stringify({ error: 'Missing YOUTUBE_API_KEY in environment' }))
+          return
+        }
+
+        params.set('key', key)
+        const target = `https://www.googleapis.com/youtube/v3/search?${params.toString()}`
+
+        try {
+          const apiRes = await fetch(target)
+          const body = await apiRes.text()
+          res.statusCode = apiRes.status
+          res.setHeader('Content-Type', apiRes.headers.get('content-type') ?? 'application/json; charset=utf-8')
+          res.end(body)
+        } catch (error) {
+          res.statusCode = 500
+          res.setHeader('Content-Type', 'application/json; charset=utf-8')
+          res.end(JSON.stringify({ error: 'YouTube search proxy failed' }))
+        }
+      })
+    },
+  }
+}
+
 function figmaMakeKitPlugin(options: { storiesGlob: string | string[] }): Plugin {
   const storiesGlob = Array.isArray(options.storiesGlob) ? options.storiesGlob : [options.storiesGlob]
   const ROUTE = '/.figma/make/kit.html'

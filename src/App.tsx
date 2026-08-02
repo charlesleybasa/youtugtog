@@ -31,7 +31,6 @@ const STARTER: Track[] = [
   { id: 'YQHsXMglC9A', title: 'Hello', artist: 'Adele' },
 ]
 
-const YOUTUBE_API_KEY = 'AIzaSyB_NmhweyvJ4J7nf3yklpzVo7KQQvdyjfc'
 const SEARCH_PROXY = '/api/search'
 
 function parseVideoId(input: string): string | null {
@@ -441,22 +440,18 @@ export default function App() {
     setSearchLoading(true)
     setSearchResults([])
     try {
-      let response = await fetch(`${SEARCH_PROXY}?q=${encodeURIComponent(q)}`)
-      if (response.status === 404) {
-        response = await fetch(
-          `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=8&q=${encodeURIComponent(
-            q,
-          )}&key=${YOUTUBE_API_KEY}`,
-        )
-      }
+      const response = await fetch(`${SEARCH_PROXY}?q=${encodeURIComponent(q)}`)
       const json = await response.json()
       if (!response.ok) {
+        const errorValue = json.error
         const message =
-          json.error?.message || json?.error?.errors?.[0]?.message || `Unable to search YouTube (${response.status})`
+          typeof errorValue === 'string'
+            ? errorValue
+            : errorValue?.message || json?.error?.errors?.[0]?.message || `Unable to search YouTube (${response.status})`
         const blocked = /blocked|referer|permission|restricted|forbidden/i.test(message)
         throw new Error(
           blocked
-            ? 'YouTube blocked the search request. Fix API key restrictions or deploy the app with the /api/search proxy enabled.'
+            ? 'YouTube blocked the search request. Fix API key restrictions or set a valid YOUTUBE_API_KEY for the local proxy.'
             : message,
         )
       }
@@ -476,7 +471,7 @@ export default function App() {
       setSearchError(
         error instanceof Error
           ? error.message
-          : 'Search failed. Make sure the API key is enabled and the request is allowed.',
+          : 'Search failed. Make sure the proxy is running and the request is allowed.',
       )
     } finally {
       setSearchLoading(false)
