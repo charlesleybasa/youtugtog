@@ -3,6 +3,7 @@
   "framework": "vite",
   "buildCommand": "vite build",
   "outputDirectory": "dist",
+  "nodeVersion": "22.x",
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/$1" },
     { "source": "(.*)", "destination": "/" }
