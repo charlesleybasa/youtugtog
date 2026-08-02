@@ -685,7 +685,7 @@ export default function App() {
               onKeyDown={(e) => e.key === 'Enter' && addTrack()}
               placeholder="Paste a YouTube link to add…"
               className="w-full bg-transparent text-sm"
-              style={{ color: 'var(--text-strong)' }}
+              style={{ color: 'var(--text-strong)', fontSize: 16 }}
             />
             <button onClick={addTrack} className="accent-btn shrink-0 rounded-xl px-4 py-1.5 text-sm font-semibold">Add</button>
           </div>
@@ -733,7 +733,7 @@ export default function App() {
                         onKeyDown={(e) => e.key === 'Enter' && searchYouTube()}
                         placeholder="Search YouTube videos…"
                         className="w-full bg-transparent text-sm"
-                        style={{ color: 'var(--text-strong)' }}
+                        style={{ color: 'var(--text-strong)', fontSize: 16 }}
                       />
                     </div>
                   </div>
@@ -820,7 +820,13 @@ export default function App() {
               <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" />
               <path d="m20 20-3.5-3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
             </svg>
-            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search your playlist…" className="w-full bg-transparent text-sm" style={{ color: 'var(--text-strong)' }} />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search your playlist…"
+              className="w-full bg-transparent text-sm"
+              style={{ color: 'var(--text-strong)', fontSize: 16 }}
+            />
           </div>
 
           <p className="mt-3 px-1 text-[0.7rem]" style={{ color: 'var(--text-muted)' }}>

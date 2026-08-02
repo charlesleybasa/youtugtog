@@ -176,6 +176,20 @@ input::placeholder {
 input:focus {
   outline: none;
 }
+input,
+textarea,
+select,
+button {
+  -webkit-text-size-adjust: 100%;
+}
+
+@media (max-width: 640px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
 input:focus-visible {
   outline: 2px solid rgba(245, 49, 127, 0.55);
   outline-offset: 3px;
