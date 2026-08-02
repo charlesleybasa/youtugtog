@@ -247,6 +247,7 @@ export default function App() {
   const [searchResults, setSearchResults] = useState<Track[]>([])
   const [searchLoading, setSearchLoading] = useState(false)
   const [searchError, setSearchError] = useState('')
+  const [searchOpen, setSearchOpen] = useState(false)
   const [addValue, setAddValue] = useState('')
   const [addError, setAddError] = useState(false)
   const [currentId, setCurrentId] = useState(STARTER[0].id)
@@ -260,6 +261,7 @@ export default function App() {
 
   const playerRef = useRef<any>(null)
   const mountRef = useRef<HTMLDivElement | null>(null)
+  const searchInputRef = useRef<HTMLInputElement | null>(null)
   const tick = useRef<number | null>(null)
 
   const currentIdx = Math.max(0, tracks.findIndex((t) => t.id === currentId))
@@ -275,6 +277,21 @@ export default function App() {
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark)
   }, [dark])
+
+  useEffect(() => {
+    if (!searchOpen) return
+    const previousOverflow = document.body.style.overflow
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSearchOpen(false)
+    }
+    document.body.style.overflow = 'hidden'
+    searchInputRef.current?.focus()
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [searchOpen])
 
   /* live refs for the ENDED handler */
   const stateRef = useRef({ tracks, currentId, repeat })
@@ -456,13 +473,16 @@ export default function App() {
         )
       }
       const items = Array.isArray(json.items) ? json.items : []
-      const results = items
-        .map((item: any) => ({
+      const parsed: Array<{ id?: string; title: string; artist: string }> = items.map(
+        (item: { id?: { videoId?: string }; snippet?: { title?: string; channelTitle?: string } }) => ({
           id: item.id?.videoId,
           title: item.snippet?.title ?? 'Untitled',
           artist: item.snippet?.channelTitle ?? 'Unknown channel',
-        }))
-        .filter((item) => item.id)
+        }),
+      )
+      const results = parsed.filter(
+        (item: { id?: string; title: string; artist: string }): item is Track => Boolean(item.id),
+      )
       setSearchResults(results)
       if (results.length === 0) {
         setSearchError('No videos found for that search.')
@@ -673,72 +693,127 @@ export default function App() {
             <p className="mt-2 px-1 text-xs" style={{ color: '#e5788f' }}>That doesn't look like a YouTube link.</p>
           )}
 
-          <div className="neu rounded-[2rem] p-3 mt-4">
-            <div className="neu-inset flex items-center gap-3 rounded-2xl px-4 py-2.5">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ color: 'var(--text-muted)' }}>
-                <path d="M10 9.5v5l4-2.5-4-2.5Z" fill="currentColor" />
-                <rect x="2.5" y="5.5" width="19" height="13" rx="4" stroke="currentColor" strokeWidth="2" />
-              </svg>
-              <input
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value)
-                  setSearchError('')
-                }}
-                onKeyDown={(e) => e.key === 'Enter' && searchYouTube()}
-                placeholder="Search YouTube videos…"
-                className="w-full bg-transparent text-sm"
-                style={{ color: 'var(--text-strong)' }}
-              />
-              <button
-                onClick={searchYouTube}
-                disabled={!searchQuery.trim() || searchLoading}
-                className="accent-btn shrink-0 rounded-xl px-4 py-1.5 text-sm font-semibold"
-              >
-                {searchLoading ? 'Searching…' : 'Search'}
-              </button>
-            </div>
-            {searchError ? (
-              <p className="mt-3 px-4 text-xs" style={{ color: '#e5788f' }}>{searchError}</p>
-            ) : null}
-            <div className="mt-3 space-y-3">
-              {searchResults.length === 0 ? (
-                <div className="neu-inset rounded-2xl px-4 py-4 text-sm" style={{ color: 'var(--text-muted)' }}>
-                  Search YouTube and tap Add to queue a video.
-                </div>
-              ) : (
-                searchResults.map((result) => {
-                  const already = tracks.some((t) => t.id === result.id)
-                  return (
-                    <div key={result.id} className="neu-inset flex items-center gap-3 rounded-2xl px-3 py-3">
-                      <img
-                        src={`https://i.ytimg.com/vi/${result.id}/mqdefault.jpg`}
-                        alt=""
-                        className="h-14 w-20 shrink-0 rounded-xl object-cover"
-                        draggable={false}
-                      />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium" style={{ color: 'var(--text-strong)' }}>
-                          {result.title}
-                        </p>
-                        <p className="truncate text-xs" style={{ color: 'var(--text-muted)' }}>
-                          {result.artist}
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => addSearchResult(result)}
-                        disabled={already}
-                        className={`rounded-xl px-3 py-2 text-xs font-semibold ${already ? 'neu-sm' : 'accent-btn'}`}
-                        style={{ color: already ? 'var(--text-muted)' : 'var(--accent-contrast)' }}
-                      >
-                        {already ? 'Added' : 'Add'}
-                      </button>
-                    </div>
-                  )
-                })
-              )}
-            </div>
+          <div className="mt-4 flex justify-end">
+            <button
+              type="button"
+              onClick={() => setSearchOpen(true)}
+              className="accent-btn rounded-2xl px-4 py-2 text-sm font-semibold transition-transform duration-200 ease-out hover:-translate-y-0.5"
+            >
+              Search YouTube
+            </button>
           </div>
+
+          {searchOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
+              <div className="absolute inset-0 modal-backdrop" onClick={() => setSearchOpen(false)} aria-hidden="true" />
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="search-modal-title"
+                className="modal-panel neu relative z-10 w-full max-w-2xl rounded-[2rem] p-6 shadow-2xl"
+              >
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="space-y-2">
+                    <p id="search-modal-title" className="text-sm font-semibold uppercase tracking-[0.35em] text-[var(--text-muted)]">
+                      Search YouTube
+                    </p>
+                    <div className="neu-inset flex items-center gap-3 rounded-2xl px-4 py-2.5 flex-1 transition-all duration-200 ease-out focus-within:shadow-[0_0_0_3px_rgba(245,49,127,0.18)]">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ color: 'var(--text-muted)' }}>
+                        <path d="M10 9.5v5l4-2.5-4-2.5Z" fill="currentColor" />
+                        <rect x="2.5" y="5.5" width="19" height="13" rx="4" stroke="currentColor" strokeWidth="2" />
+                      </svg>
+                      <input
+                        ref={searchInputRef}
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => {
+                          setSearchQuery(e.target.value)
+                          setSearchError('')
+                        }}
+                        onKeyDown={(e) => e.key === 'Enter' && searchYouTube()}
+                        placeholder="Search YouTube videos…"
+                        className="w-full bg-transparent text-sm"
+                        style={{ color: 'var(--text-strong)' }}
+                      />
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSearchOpen(false)}
+                    aria-label="Close search modal"
+                    className="neu-btn h-11 w-11 rounded-full text-xl transition-transform duration-200 ease-out hover:-translate-y-0.5"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    ×
+                  </button>
+                </div>
+                <div className="mt-3 flex flex-col gap-3 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={searchYouTube}
+                    disabled={!searchQuery.trim() || searchLoading}
+                    className="accent-btn rounded-xl px-4 py-2 text-sm font-semibold w-full sm:w-auto"
+                  >
+                    {searchLoading ? 'Searching…' : 'Search'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchQuery('')
+                      setSearchResults([])
+                      setSearchError('')
+                    }}
+                    className="neu-btn rounded-xl px-4 py-2 text-sm font-semibold w-full sm:w-auto"
+                  >
+                    Clear
+                  </button>
+                </div>
+                {searchError ? (
+                  <p className="mt-3 px-4 text-xs" role="status" aria-live="polite" style={{ color: '#e5788f' }}>{searchError}</p>
+                ) : null}
+                <div className="mt-3 space-y-3 max-h-[60vh] overflow-y-auto">
+                  {searchResults.length === 0 ? (
+                    <div className="neu-inset rounded-2xl px-4 py-4 text-sm" style={{ color: 'var(--text-muted)' }}>
+                      Search YouTube and tap Add to queue a video.
+                    </div>
+                  ) : (
+                    searchResults.map((result) => {
+                      const already = tracks.some((t) => t.id === result.id)
+                      return (
+                        <div
+                          key={result.id}
+                          className="neu-inset flex items-center gap-3 rounded-2xl px-3 py-3 transition-transform duration-200 ease-out hover:-translate-y-1 hover:shadow-[0_15px_40px_rgba(245,49,127,0.12)]"
+                        >
+                          <img
+                            src={`https://i.ytimg.com/vi/${result.id}/mqdefault.jpg`}
+                            alt=""
+                            className="h-14 w-20 shrink-0 rounded-xl object-cover"
+                            draggable={false}
+                          />
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium" style={{ color: 'var(--text-strong)' }}>
+                              {result.title}
+                            </p>
+                            <p className="truncate text-xs" style={{ color: 'var(--text-muted)' }}>
+                              {result.artist}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => addSearchResult(result)}
+                            disabled={already}
+                            className={`rounded-xl px-3 py-2 text-xs font-semibold ${already ? 'neu-sm' : 'accent-btn'}`}
+                            style={{ color: already ? 'var(--text-muted)' : 'var(--accent-contrast)' }}
+                          >
+                            {already ? 'Added' : 'Add'}
+                          </button>
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="neu-inset mt-3 flex items-center gap-3 rounded-2xl px-4 py-2.5">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ color: 'var(--text-muted)' }}>

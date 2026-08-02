@@ -176,3 +176,38 @@ input::placeholder {
 input:focus {
   outline: none;
 }
+input:focus-visible {
+  outline: 2px solid rgba(245, 49, 127, 0.55);
+  outline-offset: 3px;
+}
+
+.modal-backdrop {
+  background: rgba(10, 14, 33, 0.4);
+  backdrop-filter: blur(12px);
+  animation: fadeIn 220ms ease-out;
+}
+
+.modal-panel {
+  transform-origin: center;
+  animation: popIn 220ms ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes popIn {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
