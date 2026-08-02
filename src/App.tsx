@@ -31,6 +31,9 @@ const STARTER: Track[] = [
   { id: 'YQHsXMglC9A', title: 'Hello', artist: 'Adele' },
 ]
 
+const YOUTUBE_API_KEY = 'AIzaSyB_NmhweyvJ4J7nf3yklpzVo7KQQvdyjfc'
+const SEARCH_PROXY = '/api/search'
+
 function parseVideoId(input: string): string | null {
   const s = input.trim()
   if (/^[a-zA-Z0-9_-]{11}$/.test(s)) return s
@@ -241,6 +244,10 @@ export default function App() {
   const [dark, setDark] = useState(false)
   const [tracks, setTracks] = useState<Track[]>(STARTER)
   const [query, setQuery] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<Track[]>([])
+  const [searchLoading, setSearchLoading] = useState(false)
+  const [searchError, setSearchError] = useState('')
   const [addValue, setAddValue] = useState('')
   const [addError, setAddError] = useState(false)
   const [currentId, setCurrentId] = useState(STARTER[0].id)
@@ -421,6 +428,60 @@ export default function App() {
     // one waits until the user taps it.
     setTracks((prev) => [...prev, { id, title: 'Added from YouTube', artist: 'Tap to play' }])
   }
+
+  const addSearchResult = (result: Track) => {
+    if (tracks.some((t) => t.id === result.id)) return
+    setTracks((prev) => [...prev, result])
+  }
+
+  const searchYouTube = useCallback(async () => {
+    const q = searchQuery.trim()
+    if (!q) return
+    setSearchError('')
+    setSearchLoading(true)
+    setSearchResults([])
+    try {
+      let response = await fetch(`${SEARCH_PROXY}?q=${encodeURIComponent(q)}`)
+      if (response.status === 404) {
+        response = await fetch(
+          `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=8&q=${encodeURIComponent(
+            q,
+          )}&key=${YOUTUBE_API_KEY}`,
+        )
+      }
+      const json = await response.json()
+      if (!response.ok) {
+        const message =
+          json.error?.message || json?.error?.errors?.[0]?.message || `Unable to search YouTube (${response.status})`
+        const blocked = /blocked|referer|permission|restricted|forbidden/i.test(message)
+        throw new Error(
+          blocked
+            ? 'YouTube blocked the search request. Fix API key restrictions or deploy the app with the /api/search proxy enabled.'
+            : message,
+        )
+      }
+      const items = Array.isArray(json.items) ? json.items : []
+      const results = items
+        .map((item: any) => ({
+          id: item.id?.videoId,
+          title: item.snippet?.title ?? 'Untitled',
+          artist: item.snippet?.channelTitle ?? 'Unknown channel',
+        }))
+        .filter((item) => item.id)
+      setSearchResults(results)
+      if (results.length === 0) {
+        setSearchError('No videos found for that search.')
+      }
+    } catch (error) {
+      setSearchError(
+        error instanceof Error
+          ? error.message
+          : 'Search failed. Make sure the API key is enabled and the request is allowed.',
+      )
+    } finally {
+      setSearchLoading(false)
+    }
+  }, [searchQuery])
 
   // drag-to-reorder: move the dragged track to occupy the target's slot
   const reorderTo = useCallback((targetId: string) => {
@@ -616,6 +677,73 @@ export default function App() {
           {addError && (
             <p className="mt-2 px-1 text-xs" style={{ color: '#e5788f' }}>That doesn't look like a YouTube link.</p>
           )}
+
+          <div className="neu rounded-[2rem] p-3 mt-4">
+            <div className="neu-inset flex items-center gap-3 rounded-2xl px-4 py-2.5">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ color: 'var(--text-muted)' }}>
+                <path d="M10 9.5v5l4-2.5-4-2.5Z" fill="currentColor" />
+                <rect x="2.5" y="5.5" width="19" height="13" rx="4" stroke="currentColor" strokeWidth="2" />
+              </svg>
+              <input
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value)
+                  setSearchError('')
+                }}
+                onKeyDown={(e) => e.key === 'Enter' && searchYouTube()}
+                placeholder="Search YouTube videos…"
+                className="w-full bg-transparent text-sm"
+                style={{ color: 'var(--text-strong)' }}
+              />
+              <button
+                onClick={searchYouTube}
+                disabled={!searchQuery.trim() || searchLoading}
+                className="accent-btn shrink-0 rounded-xl px-4 py-1.5 text-sm font-semibold"
+              >
+                {searchLoading ? 'Searching…' : 'Search'}
+              </button>
+            </div>
+            {searchError ? (
+              <p className="mt-3 px-4 text-xs" style={{ color: '#e5788f' }}>{searchError}</p>
+            ) : null}
+            <div className="mt-3 space-y-3">
+              {searchResults.length === 0 ? (
+                <div className="neu-inset rounded-2xl px-4 py-4 text-sm" style={{ color: 'var(--text-muted)' }}>
+                  Search YouTube and tap Add to queue a video.
+                </div>
+              ) : (
+                searchResults.map((result) => {
+                  const already = tracks.some((t) => t.id === result.id)
+                  return (
+                    <div key={result.id} className="neu-inset flex items-center gap-3 rounded-2xl px-3 py-3">
+                      <img
+                        src={`https://i.ytimg.com/vi/${result.id}/mqdefault.jpg`}
+                        alt=""
+                        className="h-14 w-20 shrink-0 rounded-xl object-cover"
+                        draggable={false}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium" style={{ color: 'var(--text-strong)' }}>
+                          {result.title}
+                        </p>
+                        <p className="truncate text-xs" style={{ color: 'var(--text-muted)' }}>
+                          {result.artist}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => addSearchResult(result)}
+                        disabled={already}
+                        className={`rounded-xl px-3 py-2 text-xs font-semibold ${already ? 'neu-sm' : 'accent-btn'}`}
+                        style={{ color: already ? 'var(--text-muted)' : 'var(--accent-contrast)' }}
+                      >
+                        {already ? 'Added' : 'Add'}
+                      </button>
+                    </div>
+                  )
+                })
+              )}
+            </div>
+          </div>
 
           <div className="neu-inset mt-3 flex items-center gap-3 rounded-2xl px-4 py-2.5">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ color: 'var(--text-muted)' }}>
