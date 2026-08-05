@@ -1,77 +1,152 @@
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 @import 'tailwindcss';
 
-/* ---- Neumorphic theme tokens ---------------------------------------- */
+/* =====================================================================
+ * Youtugtog — Soft UI Evolution
+ * Neumorphism kept, but with WCAG-AA text contrast and real focus states.
+ * Every token below is measured: muted text >= 4.5:1 on its own panel,
+ * white-on-accent-fill >= 4.6:1 across the whole gradient.
+ * ===================================================================== */
+
 :root {
   --bg: #e4e8f4;
   --panel: #e4e8f4;
+  --panel-raised: #e8ecf6;
   --sh-dark: #bcc3da;
   --sh-light: #ffffff;
-  --text: #4a4f66;
-  --text-strong: #363b52;
-  --text-muted: #9aa0bd;
+
+  --text: #4a4f66; /* 6.59:1 */
+  --text-strong: #363b52; /* 9.00:1 */
+  --text-muted: #5f6580; /* 4.69:1 */
+
+  /* Brand pink/orange. `--accent` is decorative (fills, rings, glows). */
   --accent: #f5317f;
   --accent-soft: #ff8a2b;
+  /* `--accent-text` is the text/icon-safe pink on a panel. */
+  --accent-text: #c02363; /* 4.68:1 */
+  /* `--accent-fill` always carries white text. */
+  --accent-fill: linear-gradient(145deg, #d92e6d, #c9145c);
   --accent-contrast: #ffffff;
-  --art-glow: rgba(245, 49, 127, 0.3);
+  --grad-brand: linear-gradient(135deg, #ff8a2b, #f5317f);
+
+  --danger: #b3213f;
+  --art-glow: rgba(245, 49, 127, 0.28);
+  --scrim: rgba(16, 20, 40, 0.42);
+
+  /* Spacing scale (density 4/10 — standard) */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-12: 3rem;
+
+  --r-sm: 0.75rem;
+  --r-md: 1rem;
+  --r-lg: 1.25rem;
+  --r-xl: 2rem;
+
+  /* Motion (7/10 — standard, 200-300ms band) */
+  --dur-fast: 140ms;
+  --dur: 220ms;
+  --dur-slow: 380ms;
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-back: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --disc: clamp(190px, 56vw, 288px);
+  color-scheme: light;
 }
 
 .dark {
-  --bg: #1e222b;
-  --panel: #1e222b;
-  --sh-dark: #14161c;
-  --sh-light: #282e3a;
-  --text: #c7ccdd;
+  --bg: #1a1e27;
+  --panel: #1a1e27;
+  --panel-raised: #1e2330;
+  --sh-dark: #11141a;
+  --sh-light: #262c39;
+
+  --text: #c7ccdd; /* 9.94:1 */
   --text-strong: #eef1f8;
-  --text-muted: #6d7590;
+  --text-muted: #959cb6; /* 5.84:1 */
+
   --accent: #f5317f;
   --accent-soft: #ff8a2b;
+  --accent-text: #ff6ba1; /* 5.97:1 */
+  --accent-fill: linear-gradient(145deg, #e03a75, #c9145c);
   --accent-contrast: #ffffff;
-  --art-glow: rgba(245, 49, 127, 0.42);
+
+  --danger: #ff7a8f;
+  --art-glow: rgba(245, 49, 127, 0.45);
+  --scrim: rgba(4, 6, 14, 0.62);
+  color-scheme: dark;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
 }
 
 html,
-body,
-#root {
+body {
   height: 100%;
+}
+
+#root {
+  min-height: 100%;
 }
 
 body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: 'Poppins', system-ui, sans-serif;
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  font-synthesis-weight: none;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
   transition:
-    background 0.5s ease,
-    color 0.5s ease;
+    background var(--dur-slow) var(--ease),
+    color var(--dur-slow) var(--ease);
 }
 
 .font-display {
-  font-family: 'Outfit', 'Poppins', sans-serif;
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  letter-spacing: -0.02em;
+}
+
+.brand-text {
+  background: var(--grad-brand);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* ---- Focus: never removed, always visible --------------------------- */
+:where(button, a, input, [role='slider'], [tabindex]):focus-visible {
+  outline: 2.5px solid var(--accent);
+  outline-offset: 3px;
 }
 
 /* ---- Neumorphic primitives ------------------------------------------ */
 .neu {
   background: var(--panel);
   box-shadow:
-    9px 9px 18px var(--sh-dark),
-    -9px -9px 18px var(--sh-light);
+    9px 9px 20px var(--sh-dark),
+    -9px -9px 20px var(--sh-light);
   transition:
-    box-shadow 0.4s ease,
-    background 0.5s ease,
-    transform 0.2s ease;
+    box-shadow var(--dur-slow) var(--ease),
+    background var(--dur-slow) var(--ease),
+    transform var(--dur) var(--ease);
 }
 
 .neu-sm {
   background: var(--panel);
   box-shadow:
-    5px 5px 10px var(--sh-dark),
-    -5px -5px 10px var(--sh-light);
+    5px 5px 11px var(--sh-dark),
+    -5px -5px 11px var(--sh-light);
   transition:
-    box-shadow 0.4s ease,
-    background 0.5s ease,
-    transform 0.15s ease,
-    color 0.3s ease;
+    box-shadow var(--dur) var(--ease),
+    background var(--dur-slow) var(--ease),
+    transform var(--dur-fast) var(--ease),
+    color var(--dur) var(--ease);
 }
 
 .neu-inset {
@@ -80,109 +155,547 @@ body {
     inset 5px 5px 11px var(--sh-dark),
     inset -5px -5px 11px var(--sh-light);
   transition:
-    box-shadow 0.4s ease,
-    background 0.5s ease;
+    box-shadow var(--dur-slow) var(--ease),
+    background var(--dur-slow) var(--ease);
 }
 
-/* pressable buttons: raise, then sink when active */
+/* Pressable: raises on hover, sinks on press — the core soft-UI feedback */
 .neu-btn {
   background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
   box-shadow:
-    6px 6px 12px var(--sh-dark),
-    -6px -6px 12px var(--sh-light);
+    6px 6px 13px var(--sh-dark),
+    -6px -6px 13px var(--sh-light);
   transition:
-    box-shadow 0.25s ease,
-    background 0.5s ease,
-    transform 0.15s ease,
-    color 0.3s ease;
+    box-shadow var(--dur) var(--ease),
+    background var(--dur-slow) var(--ease),
+    transform var(--dur-fast) var(--ease),
+    color var(--dur) var(--ease);
 }
-.neu-btn:hover {
-  transform: translateY(-1px);
+
+@media (hover: hover) {
+  .neu-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow:
+      8px 8px 16px var(--sh-dark),
+      -8px -8px 16px var(--sh-light);
+    color: var(--accent-text);
+  }
 }
-.neu-btn:active,
+
+.neu-btn:active:not(:disabled),
 .neu-btn.is-pressed {
+  transform: translateY(0) scale(0.97);
   box-shadow:
     inset 4px 4px 9px var(--sh-dark),
     inset -4px -4px 9px var(--sh-light);
-  transform: translateY(0);
+}
+
+.neu-btn.is-pressed {
+  color: var(--accent-text);
+}
+
+.neu-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .accent-btn {
-  background: linear-gradient(145deg, var(--accent-soft), var(--accent));
+  background: var(--accent-fill);
   color: var(--accent-contrast);
+  cursor: pointer;
   box-shadow:
-    6px 6px 14px var(--sh-dark),
-    -6px -6px 14px var(--sh-light),
-    inset 0 0 0 rgba(0, 0, 0, 0);
+    6px 6px 15px var(--sh-dark),
+    -6px -6px 15px var(--sh-light),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
   transition:
-    box-shadow 0.25s ease,
-    transform 0.15s ease;
+    box-shadow var(--dur) var(--ease),
+    transform var(--dur-fast) var(--ease),
+    filter var(--dur) var(--ease);
 }
-.accent-btn:hover {
-  transform: translateY(-1px);
+
+@media (hover: hover) {
+  .accent-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    filter: saturate(1.12) brightness(1.06);
+    box-shadow:
+      8px 10px 22px var(--art-glow),
+      -6px -6px 15px var(--sh-light);
+  }
 }
-.accent-btn:active {
+
+.accent-btn:active:not(:disabled) {
+  transform: translateY(0) scale(0.96);
   box-shadow:
-    inset 4px 4px 9px rgba(150, 30, 80, 0.55),
-    inset -4px -4px 9px rgba(255, 170, 90, 0.55);
+    inset 4px 4px 10px rgba(120, 10, 55, 0.5),
+    inset -3px -3px 9px rgba(255, 255, 255, 0.16);
 }
 
-/* swipe-to-delete red reveal behind list rows */
-.swipe-row {
-  touch-action: pan-y;
-  transition: transform 0.18s ease;
-}
-.swipe-row.dragging {
-  transition: none;
+.accent-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: grayscale(0.35);
 }
 
-/* rotating vinyl */
-@keyframes spin {
+/* =====================================================================
+ * The disc — circular cover art, vinyl behaviour
+ * ===================================================================== */
+.disc-wrap {
+  position: relative;
+  width: var(--disc);
+  height: var(--disc);
+  display: grid;
+  place-items: center;
+  margin-inline: auto;
+}
+
+/* Ambient glow that breathes only while audio is playing */
+.disc-halo {
+  position: absolute;
+  inset: -6%;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--art-glow) 0%, transparent 68%);
+  opacity: 0;
+  transition: opacity var(--dur-slow) var(--ease);
+  pointer-events: none;
+}
+
+.is-playing .disc-halo {
+  opacity: 1;
+  animation: halo-breathe 4.2s var(--ease) infinite;
+}
+
+@keyframes halo-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.75;
+  }
+  50% {
+    transform: scale(1.07);
+    opacity: 1;
+  }
+}
+
+.disc-ring {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+  pointer-events: none;
+}
+
+.disc-ring__track {
+  stroke: var(--sh-dark);
+  opacity: 0.55;
+}
+
+.disc-ring__value {
+  stroke: url(#discGrad);
+  stroke-linecap: round;
+  transition: stroke-dashoffset var(--dur) linear;
+}
+
+/* Raised outer bezel */
+.disc-plate {
+  position: relative;
+  width: 84%;
+  height: 84%;
+  border-radius: 50%;
+  background: var(--panel);
+  box-shadow:
+    10px 10px 24px var(--sh-dark),
+    -10px -10px 24px var(--sh-light);
+  display: grid;
+  place-items: center;
+  transition:
+    box-shadow var(--dur-slow) var(--ease),
+    transform var(--dur-slow) var(--ease-back);
+}
+
+/* Recessed groove the art sits in */
+.disc-groove {
+  position: relative;
+  width: 88%;
+  height: 88%;
+  border-radius: 50%;
+  overflow: hidden;
+  box-shadow:
+    inset 7px 7px 14px var(--sh-dark),
+    inset -7px -7px 14px var(--sh-light);
+}
+
+.disc-art {
+  position: absolute;
+  inset: 5%;
+  width: 90%;
+  height: 90%;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--sh-dark);
+  animation: disc-spin 14s linear infinite;
+  animation-play-state: paused;
+  transition: opacity var(--dur-slow) var(--ease);
+}
+
+.is-playing .disc-art {
+  animation-play-state: running;
+}
+
+@keyframes disc-spin {
   to {
     transform: rotate(360deg);
   }
 }
-.spinning {
-  animation: spin 8s linear infinite;
+
+/* Vinyl spindle + light sweep */
+.disc-spindle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 13%;
+  height: 13%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: var(--panel);
+  box-shadow:
+    inset 2px 2px 5px var(--sh-dark),
+    inset -2px -2px 5px var(--sh-light),
+    0 0 0 4px rgba(255, 255, 255, 0.1);
+  pointer-events: none;
 }
-.spin-paused {
+
+.disc-sheen {
+  position: absolute;
+  inset: 5%;
+  border-radius: 50%;
+  pointer-events: none;
+  background: linear-gradient(
+    128deg,
+    rgba(255, 255, 255, 0.42) 0%,
+    rgba(255, 255, 255, 0.06) 32%,
+    transparent 55%
+  );
+  mix-blend-mode: overlay;
+}
+
+.skeleton {
+  display: block;
+  background: linear-gradient(100deg, var(--sh-dark) 20%, var(--panel-raised) 50%, var(--sh-dark) 80%);
+  background-size: 220% 100%;
+  animation: shimmer 1.5s linear infinite;
+}
+
+.disc-skeleton {
+  position: absolute;
+  inset: 5%;
+  border-radius: 50%;
+  background: linear-gradient(100deg, var(--sh-dark) 20%, var(--panel-raised) 50%, var(--sh-dark) 80%);
+  background-size: 220% 100%;
+  animation: shimmer 1.5s linear infinite;
+}
+
+/* Small rotating art used by the sticky mini player */
+.mini-art {
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--sh-dark);
+  animation: disc-spin 14s linear infinite;
   animation-play-state: paused;
 }
 
-/* marquee for long artist names */
+.mini-art.is-spinning {
+  animation-play-state: running;
+}
+
+@keyframes shimmer {
+  to {
+    background-position: -220% 0;
+  }
+}
+
+/* =====================================================================
+ * Hidden YouTube stage — audio-only playback
+ * The official IFrame player stays mounted and rendered (so playback,
+ * views and ads all behave normally); it is simply parked behind the
+ * page instead of being torn down.
+ * ===================================================================== */
+.yt-stage {
+  position: relative;
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  background: #000;
+  aspect-ratio: 16 / 9;
+  transition: opacity var(--dur-slow) var(--ease);
+}
+
+.yt-stage.is-parked {
+  position: fixed;
+  bottom: 0;
+  right: 0;
+  width: 320px;
+  height: 180px;
+  aspect-ratio: auto;
+  opacity: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+
+/* =====================================================================
+ * Equalizer — live indicator on the playing row
+ * ===================================================================== */
+.eq {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 14px;
+}
+
+.eq span {
+  width: 3px;
+  border-radius: 2px;
+  background: currentColor;
+  height: 100%;
+  transform-origin: bottom;
+  animation: eq-bounce 900ms var(--ease) infinite alternate;
+}
+
+.eq span:nth-child(1) {
+  animation-delay: -200ms;
+}
+.eq span:nth-child(2) {
+  animation-delay: -520ms;
+}
+.eq span:nth-child(3) {
+  animation-delay: -80ms;
+}
+
+@keyframes eq-bounce {
+  from {
+    transform: scaleY(0.28);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+/* =====================================================================
+ * Sliders — seek + volume
+ * ===================================================================== */
+.slider-track {
+  position: relative;
+  border-radius: 999px;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.slider-fill {
+  position: relative;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--grad-brand);
+  transition: width var(--dur) linear;
+}
+
+.slider-track.is-scrubbing .slider-fill {
+  transition: none;
+}
+
+.slider-thumb {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  transform: translate(50%, -50%) scale(1);
+  background: var(--panel);
+  box-shadow:
+    2px 2px 5px var(--sh-dark),
+    -2px -2px 5px var(--sh-light);
+  transition: transform var(--dur) var(--ease-back);
+}
+
+.slider-track:hover .slider-thumb,
+.slider-track.is-scrubbing .slider-thumb,
+.slider-track:focus-visible .slider-thumb {
+  transform: translate(50%, -50%) scale(1.25);
+}
+
+/* Comfortable hit area without a fat visual bar (WCAG 2.5.5) */
+.slider-track::after {
+  content: '';
+  position: absolute;
+  inset: -14px 0;
+}
+
+/* =====================================================================
+ * List rows
+ * ===================================================================== */
+.swipe-row {
+  touch-action: pan-y;
+  transition:
+    transform var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease);
+}
+
+.swipe-row.dragging {
+  transition: box-shadow var(--dur) var(--ease);
+}
+
+@media (hover: hover) {
+  .row-hover:hover .swipe-row {
+    transform: translateX(2px);
+  }
+}
+
+/* Staggered entrance — index passed as --i from React */
+.rise-in {
+  animation: rise-in var(--dur-slow) var(--ease) backwards;
+  animation-delay: calc(var(--i, 0) * 45ms);
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Marquee for titles that overflow */
+.marquee {
+  display: inline-block;
+  white-space: nowrap;
+  animation: marquee 12s linear infinite;
+}
+
 @keyframes marquee {
   0%,
-  12% {
+  8% {
     transform: translateX(0);
   }
-  88%,
+  92%,
   100% {
     transform: translateX(var(--marquee-shift, 0));
   }
 }
 
-/* hidden scrollbars until scroll */
-.soft-scroll {
-  scrollbar-width: none;
+/* =====================================================================
+ * Overlays, toasts, mini player
+ * ===================================================================== */
+.modal-backdrop {
+  background: var(--scrim);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  animation: fade-in var(--dur) var(--ease);
 }
+
+.modal-panel {
+  animation: pop-in 280ms var(--ease-back);
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.mini-player {
+  animation: mini-up 300ms var(--ease);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@keyframes mini-up {
+  from {
+    opacity: 0;
+    transform: translateY(110%);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.toast {
+  animation: toast-in 300ms var(--ease-back);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 24px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+/* =====================================================================
+ * Utilities
+ * ===================================================================== */
+.soft-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--sh-dark) transparent;
+  overscroll-behavior: contain;
+}
+
 .soft-scroll::-webkit-scrollbar {
-  width: 0;
-  height: 0;
+  width: 6px;
+  height: 6px;
+}
+
+.soft-scroll::-webkit-scrollbar-thumb {
+  background: var(--sh-dark);
+  border-radius: 999px;
+}
+
+.soft-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.safe-b {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 0px);
 }
 
 input::placeholder {
   color: var(--text-muted);
+  opacity: 1;
 }
+
 input:focus {
   outline: none;
 }
+
 input,
 textarea,
 select,
 button {
+  font: inherit;
   -webkit-text-size-adjust: 100%;
 }
 
+/* iOS refuses to zoom-lock below 16px */
 @media (max-width: 640px) {
   input,
   textarea,
@@ -190,38 +703,40 @@ button {
     font-size: 16px !important;
   }
 }
-input:focus-visible {
-  outline: 2px solid rgba(245, 49, 127, 0.55);
-  outline-offset: 3px;
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
-.modal-backdrop {
-  background: rgba(10, 14, 33, 0.4);
-  backdrop-filter: blur(12px);
-  animation: fadeIn 220ms ease-out;
-}
-
-.modal-panel {
-  transform-origin: center;
-  animation: popIn 220ms ease-out;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
+/* =====================================================================
+ * Reduced motion — kill decorative movement, keep state changes legible
+ * ===================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
-  to {
-    opacity: 1;
-  }
-}
 
-@keyframes popIn {
-  from {
-    opacity: 0;
-    transform: translateY(18px) scale(0.98);
+  .disc-art,
+  .eq span,
+  .disc-halo {
+    animation: none !important;
   }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
+
+  .neu-btn:hover,
+  .accent-btn:hover {
+    transform: none !important;
   }
 }
