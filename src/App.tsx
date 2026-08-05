@@ -7,8 +7,8 @@ import {
   type ReactNode,
   type PointerEvent as ReactPointerEvent,
   type KeyboardEvent as ReactKeyboardEvent,
-} from 'react'
-import logoUrl from './imports/ChatGPT_Image_Jul_30__2026__01_48_16_PM.png'
+} from "react"
+import logoUrl from "./imports/ChatGPT_Image_Jul_30__2026__01_48_16_PM.png"
 
 /* --------------------------------------------------------------------- *
  * Youtugtog — "Tutog Pinoy anytime".
@@ -22,53 +22,74 @@ import logoUrl from './imports/ChatGPT_Image_Jul_30__2026__01_48_16_PM.png'
  * --------------------------------------------------------------------- */
 
 type Track = { id: string; title: string; artist: string }
-type Repeat = 'off' | 'all' | 'one'
-type ToastState = { id: number; message: string; action?: { label: string; run: () => void } }
+type Repeat = "off" | "all" | "one"
+type ToastState = {
+  id: number
+  message: string
+  action?: { label: string; run: () => void }
+}
 
 const STARTER: Track[] = [
-  { id: 'JGwWNGJdvx8', title: 'Shape of You', artist: 'Ed Sheeran' },
-  { id: 'OPf0YbXqDm0', title: 'Uptown Funk', artist: 'Mark Ronson ft. Bruno Mars' },
-  { id: 'kJQP7kiw5Fk', title: 'Despacito', artist: 'Luis Fonsi ft. Daddy Yankee' },
-  { id: 'RgKAFK5djSk', title: 'See You Again', artist: 'Wiz Khalifa ft. Charlie Puth' },
-  { id: 'hT_nvWreIhg', title: 'Counting Stars', artist: 'OneRepublic' },
-  { id: '60ItHLz5WEA', title: 'Faded', artist: 'Alan Walker' },
-  { id: 'CevxZvSJLk8', title: 'Roar', artist: 'Katy Perry' },
-  { id: '2Vv-BfVoq4g', title: 'Perfect', artist: 'Ed Sheeran' },
-  { id: 'YQHsXMglC9A', title: 'Hello', artist: 'Adele' },
+  { id: "JGwWNGJdvx8", title: "Shape of You", artist: "Ed Sheeran" },
+  {
+    id: "OPf0YbXqDm0",
+    title: "Uptown Funk",
+    artist: "Mark Ronson ft. Bruno Mars",
+  },
+  {
+    id: "kJQP7kiw5Fk",
+    title: "Despacito",
+    artist: "Luis Fonsi ft. Daddy Yankee",
+  },
+  {
+    id: "RgKAFK5djSk",
+    title: "See You Again",
+    artist: "Wiz Khalifa ft. Charlie Puth",
+  },
+  { id: "hT_nvWreIhg", title: "Counting Stars", artist: "OneRepublic" },
+  { id: "60ItHLz5WEA", title: "Faded", artist: "Alan Walker" },
+  { id: "CevxZvSJLk8", title: "Roar", artist: "Katy Perry" },
+  { id: "2Vv-BfVoq4g", title: "Perfect", artist: "Ed Sheeran" },
+  { id: "YQHsXMglC9A", title: "Hello", artist: "Adele" },
 ]
 
-const SEARCH_PROXY = '/api/search'
-const STORE_KEY = 'youtugtog:state:v1'
+const SEARCH_PROXY = "/api/search"
+const STORE_KEY = "youtugtog:state:v1"
 
 /* ---- Small helpers -------------------------------------------------- */
 
 function parseVideoId(input: string): string | null {
   const s = input.trim()
   if (/^[a-zA-Z0-9_-]{11}$/.test(s)) return s
-  const m = s.match(/(?:youtu\.be\/|v=|\/embed\/|\/shorts\/|\/live\/)([a-zA-Z0-9_-]{11})/)
+  const m = s.match(
+    /(?:youtu\.be\/|v=|\/embed\/|\/shorts\/|\/live\/)([a-zA-Z0-9_-]{11})/,
+  )
   return m ? m[1] : null
 }
 
 const fmt = (s: number) => {
-  if (!Number.isFinite(s) || s < 0) return '0:00'
+  if (!Number.isFinite(s) || s < 0) return "0:00"
   const m = Math.floor(s / 60)
   const sec = Math.floor(s % 60)
-  return `${m}:${sec.toString().padStart(2, '0')}`
+  return `${m}:${sec.toString().padStart(2, "0")}`
 }
 
 /** YouTube's API returns HTML-escaped snippets ("Don&amp;#39;t"). Unescape them. */
 function decodeEntities(value: string): string {
-  if (!value.includes('&')) return value
-  const el = document.createElement('textarea')
+  if (!value.includes("&")) return value
+  const el = document.createElement("textarea")
   el.innerHTML = value
   return el.value
 }
 
-const coverArt = (id: string) => `https://i.ytimg.com/vi/${id}/maxresdefault.jpg`
-const coverArtFallback = (id: string) => `https://i.ytimg.com/vi/${id}/mqdefault.jpg`
+const coverArt = (id: string) =>
+  `https://i.ytimg.com/vi/${id}/maxresdefault.jpg`
+const coverArtFallback = (id: string) =>
+  `https://i.ytimg.com/vi/${id}/mqdefault.jpg`
 const rowThumb = (id: string) => `https://i.ytimg.com/vi/${id}/mqdefault.jpg`
 
-const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n))
+const clamp = (n: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, n))
 
 type Persisted = {
   tracks?: Track[]
@@ -84,14 +105,17 @@ function loadPersisted(): Persisted {
     const raw = localStorage.getItem(STORE_KEY)
     if (!raw) return {}
     const parsed = JSON.parse(raw) as Persisted
-    return parsed && typeof parsed === 'object' ? parsed : {}
+    return parsed && typeof parsed === "object" ? parsed : {}
   } catch {
     return {}
   }
 }
 
 function prefersDark(): boolean {
-  return typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches
+  return (
+    typeof window !== "undefined" &&
+    window.matchMedia?.("(prefers-color-scheme: dark)").matches
+  )
 }
 
 declare global {
@@ -109,10 +133,10 @@ function loadYouTubeApi(): Promise<any> {
       prev?.()
       resolve(window.YT)
     }
-    if (!document.getElementById('yt-iframe-api')) {
-      const tag = document.createElement('script')
-      tag.id = 'yt-iframe-api'
-      tag.src = 'https://www.youtube.com/iframe_api'
+    if (!document.getElementById("yt-iframe-api")) {
+      const tag = document.createElement("script")
+      tag.id = "yt-iframe-api"
+      tag.src = "https://www.youtube.com/iframe_api"
       document.head.appendChild(tag)
     }
   })
@@ -122,24 +146,48 @@ function loadYouTubeApi(): Promise<any> {
 
 const Icon = {
   Play: (p: { size?: number }) => (
-    <svg width={p.size ?? 22} height={p.size ?? 22} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <svg
+      width={p.size ?? 22}
+      height={p.size ?? 22}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+    >
       <path d="M8.4 5.2a1 1 0 0 1 1.53-.85l8.2 5.15a1.77 1.77 0 0 1 0 3l-8.2 5.15a1 1 0 0 1-1.53-.85z" />
     </svg>
   ),
   Pause: (p: { size?: number }) => (
-    <svg width={p.size ?? 22} height={p.size ?? 22} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <svg
+      width={p.size ?? 22}
+      height={p.size ?? 22}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+    >
       <rect x="6.5" y="4.5" width="4" height="15" rx="1.6" />
       <rect x="13.5" y="4.5" width="4" height="15" rx="1.6" />
     </svg>
   ),
   Prev: (p: { size?: number }) => (
-    <svg width={p.size ?? 20} height={p.size ?? 20} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <svg
+      width={p.size ?? 20}
+      height={p.size ?? 20}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+    >
       <rect x="5" y="5.5" width="2.6" height="13" rx="1.3" />
       <path d="M19.5 7.1v9.8a1 1 0 0 1-1.53.85l-7.8-4.9a1 1 0 0 1 0-1.7l7.8-4.9a1 1 0 0 1 1.53.85z" />
     </svg>
   ),
   Next: (p: { size?: number }) => (
-    <svg width={p.size ?? 20} height={p.size ?? 20} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <svg
+      width={p.size ?? 20}
+      height={p.size ?? 20}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+    >
       <rect x="16.4" y="5.5" width="2.6" height="13" rx="1.3" />
       <path d="M4.5 7.1v9.8a1 1 0 0 0 1.53.85l7.8-4.9a1 1 0 0 0 0-1.7l-7.8-4.9a1 1 0 0 0-1.53.85z" />
     </svg>
@@ -201,26 +249,65 @@ const Icon = {
     </svg>
   ),
   Volume: (p: { size?: number; muted?: boolean }) => (
-    <svg width={p.size ?? 18} height={p.size ?? 18} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <svg
+      width={p.size ?? 18}
+      height={p.size ?? 18}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
       <path d="M4 9v6h4l5 4V5L8 9H4Z" fill="currentColor" />
       {p.muted ? (
-        <path d="m16.5 9.5 5 5m0-5-5 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        <path
+          d="m16.5 9.5 5 5m0-5-5 5"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+        />
       ) : (
         <>
-          <path d="M16.2 8.6a4.6 4.6 0 0 1 0 6.8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-          <path d="M18.8 6a8 8 0 0 1 0 12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" opacity="0.55" />
+          <path
+            d="M16.2 8.6a4.6 4.6 0 0 1 0 6.8"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+          />
+          <path
+            d="M18.8 6a8 8 0 0 1 0 12"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            opacity="0.55"
+          />
         </>
       )}
     </svg>
   ),
   Search: (p: { size?: number }) => (
-    <svg width={p.size ?? 18} height={p.size ?? 18} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <svg
+      width={p.size ?? 18}
+      height={p.size ?? 18}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
       <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" />
-      <path d="m20 20-3.6-3.6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path
+        d="m20 20-3.6-3.6"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
     </svg>
   ),
   Link: (p: { size?: number }) => (
-    <svg width={p.size ?? 18} height={p.size ?? 18} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <svg
+      width={p.size ?? 18}
+      height={p.size ?? 18}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
       <path
         d="M10.5 13.5a3.6 3.6 0 0 0 5.1 0l2.8-2.8a3.6 3.6 0 0 0-5.1-5.1l-1.3 1.3"
         stroke="currentColor"
@@ -236,8 +323,19 @@ const Icon = {
     </svg>
   ),
   Close: (p: { size?: number }) => (
-    <svg width={p.size ?? 18} height={p.size ?? 18} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M6.5 6.5l11 11m0-11-11 11" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    <svg
+      width={p.size ?? 18}
+      height={p.size ?? 18}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M6.5 6.5l11 11m0-11-11 11"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
     </svg>
   ),
   Trash: (p: { size?: number }) => (
@@ -256,22 +354,57 @@ const Icon = {
     </svg>
   ),
   Grip: (p: { size?: number }) => (
-    <svg width={p.size ?? 14} height={(p.size ?? 14) * 1.42} viewBox="0 0 14 20" fill="currentColor" aria-hidden="true">
-      {[4, 10, 16].map((cy) => [4, 10].map((cx) => <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r="1.6" />))}
+    <svg
+      width={p.size ?? 14}
+      height={(p.size ?? 14) * 1.42}
+      viewBox="0 0 14 20"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      {[4, 10, 16].map((cy) =>
+        [4, 10].map((cx) => (
+          <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r="1.6" />
+        )),
+      )}
     </svg>
   ),
   Video: (p: { size?: number; off?: boolean }) => (
-    <svg width={p.size ?? 17} height={p.size ?? 17} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <rect x="2.5" y="5.5" width="19" height="13" rx="4" stroke="currentColor" strokeWidth="1.9" />
+    <svg
+      width={p.size ?? 17}
+      height={p.size ?? 17}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <rect
+        x="2.5"
+        y="5.5"
+        width="19"
+        height="13"
+        rx="4"
+        stroke="currentColor"
+        strokeWidth="1.9"
+      />
       {p.off ? (
-        <path d="m4.5 4 15 16" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+        <path
+          d="m4.5 4 15 16"
+          stroke="currentColor"
+          strokeWidth="1.9"
+          strokeLinecap="round"
+        />
       ) : (
         <path d="M10.2 9.4v5.2l4.4-2.6-4.4-2.6Z" fill="currentColor" />
       )}
     </svg>
   ),
   Sun: (p: { size?: number }) => (
-    <svg width={p.size ?? 20} height={p.size ?? 20} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <svg
+      width={p.size ?? 20}
+      height={p.size ?? 20}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
       <circle cx="12" cy="12" r="4.2" stroke="currentColor" strokeWidth="2" />
       {[...Array(8)].map((_, i) => (
         <line
@@ -289,18 +422,52 @@ const Icon = {
     </svg>
   ),
   Moon: (p: { size?: number }) => (
-    <svg width={p.size ?? 20} height={p.size ?? 20} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+    <svg
+      width={p.size ?? 20}
+      height={p.size ?? 20}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
     </svg>
   ),
   Check: (p: { size?: number }) => (
-    <svg width={p.size ?? 16} height={p.size ?? 16} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="m5 12.5 4.5 4.5L19 7.5" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+    <svg
+      width={p.size ?? 16}
+      height={p.size ?? 16}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="m5 12.5 4.5 4.5L19 7.5"
+        stroke="currentColor"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   ),
   Plus: (p: { size?: number }) => (
-    <svg width={p.size ?? 16} height={p.size ?? 16} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
+    <svg
+      width={p.size ?? 16}
+      height={p.size ?? 16}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M12 5v14M5 12h14"
+        stroke="currentColor"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+      />
     </svg>
   ),
 }
@@ -329,8 +496,14 @@ function IconButton({
       aria-pressed={pressed}
       title={title ?? label}
       onClick={onClick}
-      className={`neu-btn grid shrink-0 place-items-center rounded-full ${pressed ? 'is-pressed' : ''}`}
-      style={{ width: size, height: size, color: pressed ? 'var(--accent-text)' : 'var(--text)' }}
+      className={`neu-btn grid shrink-0 place-items-center rounded-full ${
+        pressed ? "is-pressed" : ""
+      }`}
+      style={{
+        width: size,
+        height: size,
+        color: pressed ? "var(--accent-text)" : "var(--text)",
+      }}
     >
       {children}
     </button>
@@ -410,12 +583,13 @@ function Slider({
   const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     if (disabled || max <= 0) return
     let next: number | null = null
-    if (e.key === 'ArrowRight' || e.key === 'ArrowUp') next = value + stepSize
-    else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') next = value - stepSize
-    else if (e.key === 'Home') next = 0
-    else if (e.key === 'End') next = max
-    else if (e.key === 'PageUp') next = value + stepSize * 2
-    else if (e.key === 'PageDown') next = value - stepSize * 2
+    if (e.key === "ArrowRight" || e.key === "ArrowUp") next = value + stepSize
+    else if (e.key === "ArrowLeft" || e.key === "ArrowDown")
+      next = value - stepSize
+    else if (e.key === "Home") next = 0
+    else if (e.key === "End") next = max
+    else if (e.key === "PageUp") next = value + stepSize * 2
+    else if (e.key === "PageDown") next = value - stepSize * 2
     if (next === null) return
     e.preventDefault()
     onCommit(clamp(next, 0, max))
@@ -437,12 +611,11 @@ function Slider({
       onPointerUp={endScrub}
       onPointerCancel={endScrub}
       onKeyDown={onKeyDown}
-      className={`neu-inset slider-track ${scrubbing ? 'is-scrubbing' : ''}`}
-      style={{ height, opacity: disabled ? 0.55 : 1 }}
+      className={`neu-inset slider-track ${scrubbing ? "is-scrubbing" : ""}`}
+      style={{ height, opacity: disabled ? 0.55 : 1, ["--pct" as string]: pct }}
     >
-      <div className="slider-fill" style={{ width: `${pct}%` }}>
-        <span className="slider-thumb" />
-      </div>
+      <div className="slider-fill" />
+      <span className="slider-thumb" />
     </div>
   )
 }
@@ -474,7 +647,7 @@ function CircularCover({
   const offset = circumference * (1 - clamp(progress, 0, 100) / 100)
 
   return (
-    <div className={`disc-wrap ${playing ? 'is-playing' : ''}`}>
+    <div className={`disc-wrap ${playing ? "is-playing" : ""}`}>
       <span className="disc-halo" />
 
       <svg className="disc-ring" viewBox="0 0 100 100" aria-hidden="true">
@@ -484,7 +657,14 @@ function CircularCover({
             <stop offset="100%" stopColor="var(--accent)" />
           </linearGradient>
         </defs>
-        <circle className="disc-ring__track" cx="50" cy="50" r={R} fill="none" strokeWidth="2.5" />
+        <circle
+          className="disc-ring__track"
+          cx="50"
+          cy="50"
+          r={R}
+          fill="none"
+          strokeWidth="2.5"
+        />
         <circle
           className="disc-ring__value"
           cx="50"
@@ -499,7 +679,9 @@ function CircularCover({
 
       <div className="disc-plate">
         <div className="disc-groove">
-          {(!loaded || !ready) && <span className="disc-skeleton" aria-hidden="true" />}
+          {(!loaded || !ready) && (
+            <span className="disc-skeleton" aria-hidden="true" />
+          )}
           {src && (
             <img
               key={src}
@@ -517,7 +699,8 @@ function CircularCover({
                 setLoaded(true)
               }}
               onError={() => {
-                if (trackId && src !== coverArtFallback(trackId)) setSrc(coverArtFallback(trackId))
+                if (trackId && src !== coverArtFallback(trackId))
+                  setSrc(coverArtFallback(trackId))
               }}
             />
           )}
@@ -594,24 +777,37 @@ function TrackRow({
     <li
       data-track-id={track.id}
       className="row-hover rise-in relative overflow-hidden rounded-2xl"
-      style={{ ['--i' as string]: Math.min(index, 12), opacity: isDragging ? 0.45 : 1 }}
+      style={{
+        ["--i" as string]: Math.min(index, 12),
+        opacity: isDragging ? 0.45 : 1,
+      }}
     >
-      {/* delete affordance revealed on swipe */}
-      <div
-        className="absolute inset-0 flex items-center justify-end rounded-2xl pr-6 text-white"
-        style={{ background: 'linear-gradient(90deg, #ff8a2b, #f5317f)' }}
-        aria-hidden="true"
-      >
-        <span style={{ transform: `scale(${0.7 + revealed * 0.45})`, transition: 'transform 120ms' }}>
-          <Icon.Trash size={20} />
-        </span>
-      </div>
+      {/* Delete affordance — only painted while a swipe is in progress, so it
+          can never bleed along the row edge at rest. */}
+      {dx < 0 && (
+        <div
+          className="absolute inset-0 flex items-center justify-end rounded-2xl pr-6 text-white"
+          style={{ background: "linear-gradient(90deg, #ff8a2b, #f5317f)" }}
+          aria-hidden="true"
+        >
+          <span
+            style={{
+              transform: `scale(${0.7 + revealed * 0.45})`,
+              transition: "transform 120ms",
+            }}
+          >
+            <Icon.Trash size={20} />
+          </span>
+        </div>
+      )}
 
       <div
-        className={`swipe-row ${swiping ? 'dragging' : ''} ${isCurrent ? 'neu-inset' : 'neu-sm'} flex items-center gap-1.5 rounded-2xl py-2.5 pl-1.5 pr-2 sm:gap-2 sm:pl-2 sm:pr-3`}
+        className={`swipe-row ${swiping ? "dragging" : ""} ${
+          isCurrent ? "neu-inset" : "neu-sm"
+        } flex items-center gap-1.5 rounded-2xl py-2.5 pl-1.5 pr-2 sm:gap-2 sm:pl-2 sm:pr-3`}
         style={{
           transform: `translateX(${dx}px)`,
-          ...(isDragging ? { boxShadow: '0 12px 30px var(--art-glow)' } : {}),
+          ...(isDragging ? { boxShadow: "0 12px 30px var(--art-glow)" } : {}),
         }}
         onPointerDown={onDown}
         onPointerMove={onMovePtr}
@@ -627,16 +823,16 @@ function TrackRow({
             onDragStart()
           }}
           onKeyDown={(e) => {
-            if (e.key === 'ArrowUp') {
+            if (e.key === "ArrowUp") {
               e.preventDefault()
               onMoveBy(-1)
-            } else if (e.key === 'ArrowDown') {
+            } else if (e.key === "ArrowDown") {
               e.preventDefault()
               onMoveBy(1)
             }
           }}
           className="grid h-11 w-7 shrink-0 cursor-grab touch-none place-items-center rounded-lg active:cursor-grabbing"
-          style={{ color: 'var(--text-muted)' }}
+          style={{ color: "var(--text-muted)" }}
         >
           <Icon.Grip />
         </button>
@@ -644,7 +840,9 @@ function TrackRow({
         <button
           type="button"
           onClick={onClick}
-          aria-label={`${isPlayingThis ? 'Pause' : 'Play'} ${track.title} by ${track.artist}`}
+          aria-label={`${
+            isPlayingThis ? "Pause" : "Play"
+          } ${track.title} by ${track.artist}`}
           className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 py-1 text-left"
         >
           <span className="relative shrink-0">
@@ -657,12 +855,12 @@ function TrackRow({
               height={48}
               draggable={false}
               className="h-12 w-16 rounded-xl object-cover"
-              style={{ background: 'var(--sh-dark)' }}
+              style={{ background: "var(--sh-dark)" }}
             />
             {isPlayingThis && (
               <span
                 className="absolute inset-0 grid place-items-center rounded-xl"
-                style={{ background: 'rgba(12,14,28,0.5)', color: '#fff' }}
+                style={{ background: "rgba(12,14,28,0.5)", color: "#fff" }}
               >
                 <Equalizer />
               </span>
@@ -672,18 +870,28 @@ function TrackRow({
           <span className="min-w-0 flex-1">
             <span
               className="block truncate text-sm font-semibold"
-              style={{ color: isCurrent ? 'var(--accent-text)' : 'var(--text-strong)' }}
+              style={{
+                color: isCurrent ? "var(--accent-text)" : "var(--text-strong)",
+              }}
             >
               {track.title}
             </span>
-            <span className="mt-0.5 block truncate text-xs" style={{ color: 'var(--text-muted)' }}>
+            <span
+              className="mt-0.5 block truncate text-xs"
+              style={{ color: "var(--text-muted)" }}
+            >
               {track.artist}
             </span>
           </span>
 
+          {/* Decorative — the whole row is the play target, and state is
+              already carried by the accent title, the inset shadow and the
+              equalizer badge. It only earns its width once there is room. */}
           <span
-            className={`grid h-10 w-10 shrink-0 place-items-center rounded-full ${isCurrent ? 'accent-btn' : 'neu-sm'}`}
-            style={{ color: isCurrent ? '#fff' : 'var(--text-muted)' }}
+            className={`hidden h-10 w-10 shrink-0 place-items-center rounded-full sm:grid ${
+              isCurrent ? "accent-btn" : "neu-sm"
+            }`}
+            style={{ color: isCurrent ? "#fff" : "var(--text-muted)" }}
             aria-hidden="true"
           >
             {isPlayingThis ? <Icon.Pause size={14} /> : <Icon.Play size={14} />}
@@ -695,7 +903,7 @@ function TrackRow({
           aria-label={`Remove ${track.title} from the queue`}
           onClick={onDelete}
           className="grid h-11 w-9 shrink-0 cursor-pointer place-items-center rounded-full"
-          style={{ color: 'var(--text-muted)' }}
+          style={{ color: "var(--text-muted)" }}
         >
           <Icon.Close size={15} />
         </button>
@@ -738,16 +946,16 @@ function SearchModal({
     if (!open) return
     const returnTo = document.activeElement as HTMLElement | null
     const prevOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+    document.body.style.overflow = "hidden"
     const focusTimer = window.setTimeout(() => inputRef.current?.focus(), 60)
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      if (event.key === "Escape") {
         event.stopPropagation()
         onClose()
         return
       }
-      if (event.key !== 'Tab' || !panelRef.current) return
+      if (event.key !== "Tab" || !panelRef.current) return
       const focusables = panelRef.current.querySelectorAll<HTMLElement>(
         'button:not(:disabled), input, [href], [tabindex]:not([tabindex="-1"])',
       )
@@ -763,11 +971,11 @@ function SearchModal({
       }
     }
 
-    window.addEventListener('keydown', onKeyDown, true)
+    window.addEventListener("keydown", onKeyDown, true)
     return () => {
       window.clearTimeout(focusTimer)
       document.body.style.overflow = prevOverflow
-      window.removeEventListener('keydown', onKeyDown, true)
+      window.removeEventListener("keydown", onKeyDown, true)
       returnTo?.focus?.()
     }
   }, [open, onClose])
@@ -776,7 +984,11 @@ function SearchModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center px-3 py-3 sm:items-center sm:px-4 sm:py-6">
-      <div className="modal-backdrop absolute inset-0" onClick={onClose} aria-hidden="true" />
+      <div
+        className="modal-backdrop absolute inset-0"
+        onClick={onClose}
+        aria-hidden="true"
+      />
 
       <div
         ref={panelRef}
@@ -790,11 +1002,11 @@ function SearchModal({
             <p
               id="search-modal-title"
               className="font-display text-[0.68rem] font-bold uppercase tracking-[0.32em]"
-              style={{ color: 'var(--text-muted)' }}
+              style={{ color: "var(--text-muted)" }}
             >
               Search YouTube
             </p>
-            <p className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+            <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
               Add anything to your queue — it plays as audio.
             </p>
           </div>
@@ -804,7 +1016,7 @@ function SearchModal({
         </div>
 
         <div className="neu-inset mt-4 flex items-center gap-3 rounded-2xl px-4 py-3">
-          <span style={{ color: 'var(--text-muted)' }}>
+          <span style={{ color: "var(--text-muted)" }}>
             <Icon.Search />
           </span>
           <input
@@ -813,12 +1025,12 @@ function SearchModal({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') onSearch()
+              if (e.key === "Enter") onSearch()
             }}
             placeholder="Songs, artists, albums…"
             enterKeyHint="search"
             className="w-full min-w-0 bg-transparent text-sm"
-            style={{ color: 'var(--text-strong)' }}
+            style={{ color: "var(--text-strong)" }}
           />
         </div>
 
@@ -829,11 +1041,11 @@ function SearchModal({
             disabled={!query.trim() || loading}
             className="accent-btn flex-1 rounded-xl px-4 py-3 text-sm font-bold sm:flex-none sm:px-6"
           >
-            {loading ? 'Searching…' : 'Search'}
+            {loading ? "Searching…" : "Search"}
           </button>
           <button
             type="button"
-            onClick={() => setQuery('')}
+            onClick={() => setQuery("")}
             disabled={!query}
             className="neu-btn rounded-xl px-4 py-3 text-sm font-bold sm:px-6"
           >
@@ -846,7 +1058,7 @@ function SearchModal({
             className="neu-inset mt-3 rounded-xl px-4 py-3 text-xs leading-relaxed"
             role="status"
             aria-live="polite"
-            style={{ color: 'var(--danger)' }}
+            style={{ color: "var(--danger)" }}
           >
             {error}
           </p>
@@ -861,16 +1073,28 @@ function SearchModal({
                 aria-hidden="true"
                 style={{ opacity: 1 - i * 0.18 }}
               >
-                <span className="skeleton h-14 w-20 shrink-0" style={{ borderRadius: 12 }} />
+                <span
+                  className="skeleton h-14 w-20 shrink-0"
+                  style={{ borderRadius: 12 }}
+                />
                 <span className="flex-1 space-y-2">
-                  <span className="skeleton h-3 w-3/4" style={{ borderRadius: 999 }} />
-                  <span className="skeleton h-2.5 w-1/3" style={{ borderRadius: 999 }} />
+                  <span
+                    className="skeleton h-3 w-3/4"
+                    style={{ borderRadius: 999 }}
+                  />
+                  <span
+                    className="skeleton h-2.5 w-1/3"
+                    style={{ borderRadius: 999 }}
+                  />
                 </span>
               </div>
             ))}
 
           {!loading && results.length === 0 && !error && (
-            <div className="neu-inset rounded-2xl px-5 py-8 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
+            <div
+              className="neu-inset rounded-2xl px-5 py-8 text-center text-sm"
+              style={{ color: "var(--text-muted)" }}
+            >
               Search for a song, then add it to your queue.
             </div>
           )}
@@ -882,7 +1106,7 @@ function SearchModal({
                 <div
                   key={result.id}
                   className="rise-in neu-inset flex items-center gap-3 rounded-2xl px-3 py-2.5"
-                  style={{ ['--i' as string]: i }}
+                  style={{ ["--i" as string]: i }}
                 >
                   <img
                     src={rowThumb(result.id)}
@@ -892,14 +1116,20 @@ function SearchModal({
                     width={80}
                     height={56}
                     className="h-14 w-20 shrink-0 rounded-xl object-cover"
-                    style={{ background: 'var(--sh-dark)' }}
+                    style={{ background: "var(--sh-dark)" }}
                     draggable={false}
                   />
                   <div className="min-w-0 flex-1">
-                    <p className="line-clamp-2 text-sm font-semibold" style={{ color: 'var(--text-strong)' }}>
+                    <p
+                      className="line-clamp-2 text-sm font-semibold"
+                      style={{ color: "var(--text-strong)" }}
+                    >
                       {result.title}
                     </p>
-                    <p className="mt-0.5 truncate text-xs" style={{ color: 'var(--text-muted)' }}>
+                    <p
+                      className="mt-0.5 truncate text-xs"
+                      style={{ color: "var(--text-muted)" }}
+                    >
                       {result.artist}
                     </p>
                   </div>
@@ -909,7 +1139,7 @@ function SearchModal({
                       onClick={() => onPlay(result)}
                       aria-label={`Play ${result.title}`}
                       className="neu-btn grid h-11 w-11 shrink-0 place-items-center rounded-full"
-                      style={{ color: 'var(--accent-text)' }}
+                      style={{ color: "var(--accent-text)" }}
                     >
                       <Icon.Play size={16} />
                     </button>
@@ -954,7 +1184,10 @@ function MiniPlayer({
   if (!track) return null
   return (
     <div className="mini-player fixed inset-x-0 bottom-0 z-40 px-3 pb-3 lg:hidden">
-      <div className="neu flex items-center gap-2 rounded-2xl p-2 pr-2.5" style={{ background: 'var(--panel-raised)' }}>
+      <div
+        className="neu flex items-center gap-2 rounded-2xl p-2 pr-2.5"
+        style={{ background: "var(--panel-raised)" }}
+      >
         <button
           type="button"
           onClick={onExpand}
@@ -962,8 +1195,19 @@ function MiniPlayer({
           aria-label={`Now playing ${track.title}. Scroll to the player.`}
         >
           <span className="relative grid h-11 w-11 shrink-0 place-items-center">
-            <svg viewBox="0 0 40 40" className="absolute inset-0 h-full w-full -rotate-90" aria-hidden="true">
-              <circle cx="20" cy="20" r="18.5" fill="none" stroke="var(--sh-dark)" strokeWidth="2" />
+            <svg
+              viewBox="0 0 40 40"
+              className="absolute inset-0 h-full w-full -rotate-90"
+              aria-hidden="true"
+            >
+              <circle
+                cx="20"
+                cy="20"
+                r="18.5"
+                fill="none"
+                stroke="var(--sh-dark)"
+                strokeWidth="2"
+              />
               <circle
                 cx="20"
                 cy="20"
@@ -973,21 +1217,29 @@ function MiniPlayer({
                 strokeWidth="2"
                 strokeLinecap="round"
                 strokeDasharray={2 * Math.PI * 18.5}
-                strokeDashoffset={2 * Math.PI * 18.5 * (1 - clamp(progress, 0, 100) / 100)}
+                strokeDashoffset={
+                  2 * Math.PI * 18.5 * (1 - clamp(progress, 0, 100) / 100)
+                }
               />
             </svg>
             <img
               src={rowThumb(track.id)}
               alt=""
-              className={`mini-art h-8 w-8 ${playing ? 'is-spinning' : ''}`}
+              className={`mini-art h-8 w-8 ${playing ? "is-spinning" : ""}`}
               draggable={false}
             />
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-[0.8rem] font-semibold" style={{ color: 'var(--text-strong)' }}>
+            <span
+              className="block truncate text-[0.8rem] font-semibold"
+              style={{ color: "var(--text-strong)" }}
+            >
               {track.title}
             </span>
-            <span className="block truncate text-[0.7rem]" style={{ color: 'var(--text-muted)' }}>
+            <span
+              className="block truncate text-[0.7rem]"
+              style={{ color: "var(--text-muted)" }}
+            >
               {track.artist}
             </span>
           </span>
@@ -999,7 +1251,7 @@ function MiniPlayer({
         <button
           type="button"
           onClick={onToggle}
-          aria-label={playing ? 'Pause' : 'Play'}
+          aria-label={playing ? "Pause" : "Play"}
           className="accent-btn grid h-12 w-12 shrink-0 cursor-pointer place-items-center rounded-full"
         >
           {playing ? <Icon.Pause size={18} /> : <Icon.Play size={18} />}
@@ -1014,7 +1266,13 @@ function MiniPlayer({
 
 /* ---- Toast ---------------------------------------------------------- */
 
-function Toast({ toast, onDismiss }: { toast: ToastState | null; onDismiss: () => void }) {
+function Toast({
+  toast,
+  onDismiss,
+}: {
+  toast: ToastState | null
+  onDismiss: () => void
+}) {
   useEffect(() => {
     if (!toast) return
     const t = window.setTimeout(onDismiss, 4500)
@@ -1025,14 +1283,20 @@ function Toast({ toast, onDismiss }: { toast: ToastState | null; onDismiss: () =
   return (
     <div
       className="toast neu fixed bottom-24 left-1/2 z-[60] flex max-w-[92vw] items-center gap-3 rounded-2xl px-4 py-3 lg:bottom-6"
-      style={{ background: 'var(--panel-raised)' }}
+      style={{ background: "var(--panel-raised)" }}
       role="status"
       aria-live="polite"
     >
-      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full" style={{ background: 'var(--accent-fill)', color: '#fff' }}>
+      <span
+        className="grid h-7 w-7 shrink-0 place-items-center rounded-full"
+        style={{ background: "var(--accent-fill)", color: "#fff" }}
+      >
         <Icon.Check size={14} />
       </span>
-      <span className="truncate text-sm font-medium" style={{ color: 'var(--text-strong)' }}>
+      <span
+        className="truncate text-sm font-medium"
+        style={{ color: "var(--text-strong)" }}
+      >
         {toast.message}
       </span>
       {toast.action && (
@@ -1043,7 +1307,7 @@ function Toast({ toast, onDismiss }: { toast: ToastState | null; onDismiss: () =
             onDismiss()
           }}
           className="shrink-0 cursor-pointer rounded-lg px-2 py-1 text-sm font-bold"
-          style={{ color: 'var(--accent-text)' }}
+          style={{ color: "var(--accent-text)" }}
         >
           {toast.action.label}
         </button>
@@ -1060,17 +1324,20 @@ export default function App() {
   const [saved] = useState<Persisted>(loadPersisted)
 
   const [dark, setDark] = useState<boolean>(saved.dark ?? prefersDark())
-  const [tracks, setTracks] = useState<Track[]>(saved.tracks?.length ? saved.tracks : STARTER)
-  const [query, setQuery] = useState('')
-  const [searchQuery, setSearchQuery] = useState('')
+  const [tracks, setTracks] = useState<Track[]>(
+    saved.tracks?.length ? saved.tracks : STARTER,
+  )
+  const [query, setQuery] = useState("")
+  const [searchQuery, setSearchQuery] = useState("")
   const [searchResults, setSearchResults] = useState<Track[]>([])
   const [searchLoading, setSearchLoading] = useState(false)
-  const [searchError, setSearchError] = useState('')
+  const [searchError, setSearchError] = useState("")
   const [searchOpen, setSearchOpen] = useState(false)
-  const [addValue, setAddValue] = useState('')
-  const [addError, setAddError] = useState('')
+  const [addValue, setAddValue] = useState("")
+  const [addError, setAddError] = useState("")
   const [currentId, setCurrentId] = useState<string>(
-    saved.currentId && (saved.tracks ?? STARTER).some((t) => t.id === saved.currentId)
+    saved.currentId &&
+      (saved.tracks ?? STARTER).some((t) => t.id === saved.currentId)
       ? saved.currentId
       : (saved.tracks?.[0]?.id ?? STARTER[0].id),
   )
@@ -1082,7 +1349,7 @@ export default function App() {
   const [duration, setDuration] = useState(0)
   const [volume, setVolume] = useState<number>(saved.volume ?? 80)
   const [muted, setMuted] = useState(false)
-  const [repeat, setRepeat] = useState<Repeat>(saved.repeat ?? 'off')
+  const [repeat, setRepeat] = useState<Repeat>(saved.repeat ?? "off")
   const [shuffle, setShuffle] = useState<boolean>(saved.shuffle ?? false)
   const [dragId, setDragId] = useState<string | null>(null)
   const [showVideo, setShowVideo] = useState(false)
@@ -1104,28 +1371,41 @@ export default function App() {
   const displayTime = scrubTime ?? time
   const progress = duration ? (displayTime / duration) * 100 : 0
 
-  const notify = useCallback((message: string, action?: ToastState['action']) => {
-    toastSeq.current += 1
-    setToast({ id: toastSeq.current, message, action })
-  }, [])
+  const notify = useCallback(
+    (message: string, action?: ToastState["action"]) => {
+      toastSeq.current += 1
+      setToast({ id: toastSeq.current, message, action })
+    },
+    [],
+  )
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!q) return tracks
-    return tracks.filter((t) => t.title.toLowerCase().includes(q) || t.artist.toLowerCase().includes(q))
+    return tracks.filter(
+      (t) =>
+        t.title.toLowerCase().includes(q) || t.artist.toLowerCase().includes(q),
+    )
   }, [tracks, query])
 
   /* ---- theme ---- */
   useEffect(() => {
-    document.documentElement.classList.toggle('dark', dark)
+    document.documentElement.classList.toggle("dark", dark)
     document
       .querySelector('meta[name="theme-color"]')
-      ?.setAttribute('content', dark ? '#1a1e27' : '#e4e8f4')
+      ?.setAttribute("content", dark ? "#1a1e27" : "#e4e8f4")
   }, [dark])
 
   /* ---- persistence ---- */
   useEffect(() => {
-    const payload: Persisted = { tracks, currentId, volume, dark, repeat, shuffle }
+    const payload: Persisted = {
+      tracks,
+      currentId,
+      volume,
+      dark,
+      repeat,
+      shuffle,
+    }
     try {
       localStorage.setItem(STORE_KEY, JSON.stringify(payload))
     } catch {
@@ -1156,14 +1436,19 @@ export default function App() {
   }, [])
 
   const handleEnded = useCallback(() => {
-    const { tracks: ts, currentId: cid, repeat: rp, shuffle: sh } = stateRef.current
+    const {
+      tracks: ts,
+      currentId: cid,
+      repeat: rp,
+      shuffle: sh,
+    } = stateRef.current
     const idx = ts.findIndex((t) => t.id === cid)
-    if (rp === 'one') {
+    if (rp === "one") {
       playerRef.current?.seekTo?.(0, true)
       playerRef.current?.playVideo?.()
       return
     }
-    if (!sh && idx === ts.length - 1 && rp === 'off') {
+    if (!sh && idx === ts.length - 1 && rp === "off") {
       setPlaying(false)
       return
     }
@@ -1177,7 +1462,12 @@ export default function App() {
       if (killed || !mountRef.current) return
       playerRef.current = new YT.Player(mountRef.current, {
         videoId: currentId,
-        playerVars: { playsinline: 1, rel: 0, modestbranding: 1, iv_load_policy: 3 },
+        playerVars: {
+          playsinline: 1,
+          rel: 0,
+          modestbranding: 1,
+          iv_load_policy: 3,
+        },
         events: {
           onReady: (e: any) => {
             e.target.setVolume(volume)
@@ -1191,7 +1481,7 @@ export default function App() {
             else if (e.data === S.ENDED) handleEnded()
           },
           onError: () => {
-            notify('That video can’t be played here. Skipping…')
+            notify("That video can’t be played here. Skipping…")
             handleEnded()
           },
         },
@@ -1262,15 +1552,15 @@ export default function App() {
 
   /* ---- OS / lock-screen media controls (the "background" experience) ---- */
   useEffect(() => {
-    if (!('mediaSession' in navigator) || !track) return
+    if (!("mediaSession" in navigator) || !track) return
     try {
       navigator.mediaSession.metadata = new MediaMetadata({
         title: track.title,
         artist: track.artist,
-        album: 'Youtugtog',
+        album: "Youtugtog",
         artwork: [
-          { src: rowThumb(track.id), sizes: '320x180', type: 'image/jpeg' },
-          { src: coverArt(track.id), sizes: '1280x720', type: 'image/jpeg' },
+          { src: rowThumb(track.id), sizes: "320x180", type: "image/jpeg" },
+          { src: coverArt(track.id), sizes: "1280x720", type: "image/jpeg" },
         ],
       })
     } catch {
@@ -1279,17 +1569,27 @@ export default function App() {
   }, [track])
 
   useEffect(() => {
-    if (!('mediaSession' in navigator)) return
+    if (!("mediaSession" in navigator)) return
     const ms = navigator.mediaSession
-    const handlers: Array<[MediaSessionAction, MediaSessionActionHandler | null]> = [
-      ['play', () => playerRef.current?.playVideo?.()],
-      ['pause', () => playerRef.current?.pauseVideo?.()],
-      ['previoustrack', () => advance(-1)],
-      ['nexttrack', () => advance(1)],
-      ['seekbackward', () => seekTo(Math.max(0, (playerRef.current?.getCurrentTime?.() ?? 0) - 10))],
-      ['seekforward', () => seekTo((playerRef.current?.getCurrentTime?.() ?? 0) + 10)],
-      ['seekto', (d) => typeof d.seekTime === 'number' && seekTo(d.seekTime)],
-    ]
+    const handlers: Array<[MediaSessionAction, MediaSessionActionHandler | null]> =
+      [
+        ["play", () => playerRef.current?.playVideo?.()],
+        ["pause", () => playerRef.current?.pauseVideo?.()],
+        ["previoustrack", () => advance(-1)],
+        ["nexttrack", () => advance(1)],
+        [
+          "seekbackward",
+          () =>
+            seekTo(
+              Math.max(0, (playerRef.current?.getCurrentTime?.() ?? 0) - 10),
+            ),
+        ],
+        [
+          "seekforward",
+          () => seekTo((playerRef.current?.getCurrentTime?.() ?? 0) + 10),
+        ],
+        ["seekto", (d) => typeof d.seekTime === "number" && seekTo(d.seekTime)],
+      ]
     for (const [action, handler] of handlers) {
       try {
         ms.setActionHandler(action, handler)
@@ -1309,8 +1609,8 @@ export default function App() {
   }, [advance, seekTo])
 
   useEffect(() => {
-    if (!('mediaSession' in navigator)) return
-    navigator.mediaSession.playbackState = playing ? 'playing' : 'paused'
+    if (!("mediaSession" in navigator)) return
+    navigator.mediaSession.playbackState = playing ? "playing" : "paused"
     if (!duration || !Number.isFinite(duration)) return
     try {
       navigator.mediaSession.setPositionState({
@@ -1326,8 +1626,11 @@ export default function App() {
   /* ---- show the mini player once the real transport scrolls away ---- */
   useEffect(() => {
     const el = transportRef.current
-    if (!el || typeof IntersectionObserver === 'undefined') return
-    const io = new IntersectionObserver(([entry]) => setShowMini(!entry.isIntersecting), { threshold: 0.1 })
+    if (!el || typeof IntersectionObserver === "undefined") return
+    const io = new IntersectionObserver(
+      ([entry]) => setShowMini(!entry.isIntersecting),
+      { threshold: 0.1 },
+    )
     io.observe(el)
     return () => io.disconnect()
   }, [])
@@ -1336,21 +1639,27 @@ export default function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null
-      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return
+      if (
+        el &&
+        (el.tagName === "INPUT" ||
+          el.tagName === "TEXTAREA" ||
+          el.isContentEditable)
+      )
+        return
       if (searchOpen) return
-      if (e.key === ' ' || e.key === 'k') {
+      if (e.key === " " || e.key === "k") {
         e.preventDefault()
         toggle()
-      } else if (e.key === 'ArrowRight' && e.shiftKey) advance(1)
-      else if (e.key === 'ArrowLeft' && e.shiftKey) advance(-1)
-      else if (e.key === 'm') setMuted((m) => !m)
-      else if (e.key === '/') {
+      } else if (e.key === "ArrowRight" && e.shiftKey) advance(1)
+      else if (e.key === "ArrowLeft" && e.shiftKey) advance(-1)
+      else if (e.key === "m") setMuted((m) => !m)
+      else if (e.key === "/") {
         e.preventDefault()
         setSearchOpen(true)
       }
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
   }, [toggle, advance, searchOpen])
 
   /* ---- queue operations ---- */
@@ -1377,7 +1686,7 @@ export default function App() {
       return next
     })
     notify(`Removed “${removed.title}”`, {
-      label: 'Undo',
+      label: "Undo",
       run: () =>
         setTracks((prev) => {
           if (prev.some((t) => t.id === removed.id)) return prev
@@ -1403,17 +1712,20 @@ export default function App() {
   const addTrack = () => {
     const id = parseVideoId(addValue)
     if (!id) {
-      setAddError('That doesn’t look like a YouTube link or video ID.')
+      setAddError("That doesn’t look like a YouTube link or video ID.")
       return
     }
-    setAddError('')
-    setAddValue('')
+    setAddError("")
+    setAddValue("")
     if (tracks.some((t) => t.id === id)) {
-      notify('Already in your queue')
+      notify("Already in your queue")
       return
     }
-    setTracks((prev) => [...prev, { id, title: 'Added from YouTube', artist: 'Tap to play' }])
-    notify('Added to the end of your queue')
+    setTracks((prev) => [
+      ...prev,
+      { id, title: "Added from YouTube", artist: "Tap to play" },
+    ])
+    notify("Added to the end of your queue")
   }
 
   const addSearchResult = (result: Track) => {
@@ -1423,7 +1735,8 @@ export default function App() {
   }
 
   const playSearchResult = (result: Track) => {
-    if (!tracks.some((t) => t.id === result.id)) setTracks((prev) => [...prev, result])
+    if (!tracks.some((t) => t.id === result.id))
+      setTracks((prev) => [...prev, result])
     setCurrentId(result.id)
     setPlaying(true)
     setSearchOpen(false)
@@ -1432,7 +1745,7 @@ export default function App() {
   const searchYouTube = useCallback(async () => {
     const q = searchQuery.trim()
     if (!q) return
-    setSearchError('')
+    setSearchError("")
     setSearchLoading(true)
     setSearchResults([])
     try {
@@ -1441,33 +1754,43 @@ export default function App() {
       if (!response.ok) {
         const errorValue = json.error
         const message =
-          typeof errorValue === 'string'
+          typeof errorValue === "string"
             ? errorValue
             : errorValue?.message ||
               json?.error?.errors?.[0]?.message ||
               `Unable to search YouTube (${response.status})`
-        const blocked = /blocked|referer|permission|restricted|forbidden/i.test(message)
+        const blocked = /blocked|referer|permission|restricted|forbidden/i.test(
+          message,
+        )
         throw new Error(
           blocked
-            ? 'YouTube blocked the search request. Check the API key restrictions, or set a valid YOUTUBE_API_KEY for the proxy.'
+            ? "YouTube blocked the search request. Check the API key restrictions, or set a valid YOUTUBE_API_KEY for the proxy."
             : message,
         )
       }
       const items = Array.isArray(json.items) ? json.items : []
       const results: Track[] = items
-        .map((item: { id?: { videoId?: string }; snippet?: { title?: string; channelTitle?: string } }) => ({
-          id: item.id?.videoId,
-          title: decodeEntities(item.snippet?.title ?? 'Untitled'),
-          artist: decodeEntities(item.snippet?.channelTitle ?? 'Unknown channel'),
-        }))
+        .map(
+          (item: {
+            id?: { videoId?: string }
+            snippet?: { title?: string; channelTitle?: string }
+          }) => ({
+            id: item.id?.videoId,
+            title: decodeEntities(item.snippet?.title ?? "Untitled"),
+            artist: decodeEntities(
+              item.snippet?.channelTitle ?? "Unknown channel",
+            ),
+          }),
+        )
         .filter((item: { id?: string }): item is Track => Boolean(item.id))
       setSearchResults(results)
-      if (results.length === 0) setSearchError('No videos found for that search.')
+      if (results.length === 0)
+        setSearchError("No videos found for that search.")
     } catch (error) {
       setSearchError(
         error instanceof Error
           ? error.message
-          : 'Search failed. Make sure the proxy is running and the request is allowed.',
+          : "Search failed. Make sure the proxy is running and the request is allowed.",
       )
     } finally {
       setSearchLoading(false)
@@ -1498,23 +1821,29 @@ export default function App() {
       const onMove = (e: PointerEvent) => {
         const el = document
           .elementFromPoint(e.clientX, e.clientY)
-          ?.closest('[data-track-id]') as HTMLElement | null
+          ?.closest("[data-track-id]") as HTMLElement | null
         const overId = el?.dataset.trackId
         if (overId && overId !== dragIdRef.current) reorderTo(overId)
       }
       const onUp = () => {
         setDragId(null)
-        window.removeEventListener('pointermove', onMove)
-        window.removeEventListener('pointerup', onUp)
+        window.removeEventListener("pointermove", onMove)
+        window.removeEventListener("pointerup", onUp)
       }
-      window.addEventListener('pointermove', onMove)
-      window.addEventListener('pointerup', onUp)
+      window.addEventListener("pointermove", onMove)
+      window.addEventListener("pointerup", onUp)
     },
     [reorderTo],
   )
 
-  const cycleRepeat = () => setRepeat((r) => (r === 'off' ? 'all' : r === 'all' ? 'one' : 'off'))
-  const repeatLabel = repeat === 'off' ? 'Repeat off' : repeat === 'all' ? 'Repeat all' : 'Repeat one'
+  const cycleRepeat = () =>
+    setRepeat((r) => (r === "off" ? "all" : r === "all" ? "one" : "off"))
+  const repeatLabel =
+    repeat === "off"
+      ? "Repeat off"
+      : repeat === "all"
+        ? "Repeat all"
+        : "Repeat one"
 
   return (
     <div className="min-h-dvh w-full px-3 pt-5 pb-28 sm:px-6 sm:pt-8 lg:px-10 lg:pb-10">
@@ -1522,13 +1851,20 @@ export default function App() {
       <header className="mx-auto flex max-w-6xl items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           <div className="neu-sm grid h-14 w-14 shrink-0 place-items-center rounded-2xl p-1.5 sm:h-[68px] sm:w-[68px] sm:rounded-3xl sm:p-2">
-            <img src={logoUrl} alt="" className="h-full w-full object-contain" />
+            <img
+              src={logoUrl}
+              alt=""
+              className="h-full w-full object-contain"
+            />
           </div>
           <div className="min-w-0">
             <p className="brand-text font-display truncate text-xl font-extrabold leading-none sm:text-3xl">
               Youtugtog
             </p>
-            <p className="mt-1 truncate text-[0.68rem] font-medium sm:text-xs" style={{ color: 'var(--text-muted)' }}>
+            <p
+              className="mt-1 truncate text-[0.68rem] font-medium sm:text-xs"
+              style={{ color: "var(--text-muted)" }}
+            >
               Tutog Pinoy anytime
             </p>
           </div>
@@ -1544,16 +1880,22 @@ export default function App() {
             Search YouTube
           </button>
           <span className="sm:hidden">
-            <IconButton label="Search YouTube" onClick={() => setSearchOpen(true)} size={46}>
+            <IconButton
+              label="Search YouTube"
+              onClick={() => setSearchOpen(true)}
+              size={46}
+            >
               <Icon.Search size={19} />
             </IconButton>
           </span>
           <IconButton
-            label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
+            label={dark ? "Switch to light mode" : "Switch to dark mode"}
             onClick={() => setDark((d) => !d)}
             size={46}
           >
-            <span style={{ color: 'var(--accent-text)' }}>{dark ? <Icon.Sun /> : <Icon.Moon />}</span>
+            <span style={{ color: "var(--accent-text)" }}>
+              {dark ? <Icon.Sun /> : <Icon.Moon />}
+            </span>
           </IconButton>
         </div>
       </header>
@@ -1568,36 +1910,48 @@ export default function App() {
           <div className="flex items-center justify-between gap-2">
             <p
               className="font-display text-[0.65rem] font-bold uppercase tracking-[0.3em]"
-              style={{ color: 'var(--text-muted)' }}
+              style={{ color: "var(--text-muted)" }}
             >
-              {buffering ? 'Buffering' : playing ? 'Playing now' : 'Paused'}
+              {buffering ? "Buffering" : playing ? "Playing now" : "Paused"}
             </p>
             <button
               type="button"
               onClick={() => setShowVideo((v) => !v)}
               aria-pressed={showVideo}
-              className={`neu-btn flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-2 text-[0.68rem] font-bold uppercase tracking-wider ${showVideo ? 'is-pressed' : ''}`}
-              style={{ color: showVideo ? 'var(--accent-text)' : 'var(--text-muted)' }}
+              className={`neu-btn flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-2 text-[0.68rem] font-bold uppercase tracking-wider ${
+                showVideo ? "is-pressed" : ""
+              }`}
+              style={{
+                color: showVideo ? "var(--accent-text)" : "var(--text-muted)",
+              }}
             >
               <Icon.Video size={15} off={!showVideo} />
-              {showVideo ? 'Video' : 'Audio'}
+              {showVideo ? "Video" : "Audio"}
             </button>
           </div>
 
           <div className="mt-5 sm:mt-6">
-            <CircularCover trackId={track?.id} playing={playing} progress={progress} ready={ready} />
+            <CircularCover
+              trackId={track?.id}
+              playing={playing}
+              progress={progress}
+              ready={ready}
+            />
           </div>
 
           <div className="mt-6 text-center" aria-live="polite">
             <h1
               className="font-display truncate text-lg font-extrabold sm:text-xl"
-              style={{ color: 'var(--text-strong)' }}
+              style={{ color: "var(--text-strong)" }}
               title={track?.title}
             >
-              {track?.title ?? '—'}
+              {track?.title ?? "—"}
             </h1>
-            <p className="mt-1 truncate text-sm font-medium" style={{ color: 'var(--text-muted)' }}>
-              {track?.artist ?? ''}
+            <p
+              className="mt-1 truncate text-sm font-medium"
+              style={{ color: "var(--text-muted)" }}
+            >
+              {track?.artist ?? ""}
             </p>
           </div>
 
@@ -1616,20 +1970,23 @@ export default function App() {
             />
             <div
               className="mt-2.5 flex justify-between text-[0.7rem] font-semibold tabular-nums"
-              style={{ color: 'var(--text-muted)' }}
+              style={{ color: "var(--text-muted)" }}
             >
               <span>{fmt(displayTime)}</span>
-              <span>{duration ? fmt(duration) : '--:--'}</span>
+              <span>{duration ? fmt(duration) : "--:--"}</span>
             </div>
           </div>
 
           {/* Transport */}
-          <div ref={transportRef} className="mt-5 flex items-center justify-center gap-2.5 sm:gap-4">
+          <div
+            ref={transportRef}
+            className="mt-5 flex items-center justify-center gap-2.5 sm:gap-4"
+          >
             <IconButton
-              label={shuffle ? 'Shuffle on' : 'Shuffle off'}
+              label={shuffle ? "Shuffle on" : "Shuffle off"}
               onClick={() => {
                 setShuffle((s) => !s)
-                notify(shuffle ? 'Shuffle off' : 'Shuffle on')
+                notify(shuffle ? "Shuffle off" : "Shuffle on")
               }}
               size={44}
               pressed={shuffle}
@@ -1637,13 +1994,17 @@ export default function App() {
               <Icon.Shuffle size={17} />
             </IconButton>
 
-            <IconButton label="Previous track" onClick={() => advance(-1)} size={52}>
+            <IconButton
+              label="Previous track"
+              onClick={() => advance(-1)}
+              size={52}
+            >
               <Icon.Prev size={20} />
             </IconButton>
 
             <button
               type="button"
-              aria-label={playing ? 'Pause' : 'Play'}
+              aria-label={playing ? "Pause" : "Play"}
               onClick={toggle}
               className="accent-btn grid h-[68px] w-[68px] shrink-0 cursor-pointer place-items-center rounded-full"
             >
@@ -1654,14 +2015,26 @@ export default function App() {
               <Icon.Next size={20} />
             </IconButton>
 
-            <IconButton label={repeatLabel} onClick={cycleRepeat} size={44} pressed={repeat !== 'off'}>
-              {repeat === 'one' ? <Icon.RepeatOne size={17} /> : <Icon.Repeat size={17} />}
+            <IconButton
+              label={repeatLabel}
+              onClick={cycleRepeat}
+              size={44}
+              pressed={repeat !== "off"}
+            >
+              {repeat === "one" ? (
+                <Icon.RepeatOne size={17} />
+              ) : (
+                <Icon.Repeat size={17} />
+              )}
             </IconButton>
           </div>
 
-          <p className="mt-2.5 text-center text-[0.68rem] font-semibold" style={{ color: 'var(--text-muted)' }}>
+          <p
+            className="mt-2.5 text-center text-[0.68rem] font-semibold"
+            style={{ color: "var(--text-muted)" }}
+          >
             {repeatLabel}
-            {shuffle ? ' · Shuffle' : ''}
+            {shuffle ? " · Shuffle" : ""}
           </p>
 
           {/* Volume */}
@@ -1669,10 +2042,12 @@ export default function App() {
             <button
               type="button"
               onClick={() => setMuted((m) => !m)}
-              aria-label={muted ? 'Unmute' : 'Mute'}
+              aria-label={muted ? "Unmute" : "Mute"}
               aria-pressed={muted}
               className="grid h-10 w-10 shrink-0 cursor-pointer place-items-center rounded-full"
-              style={{ color: muted ? 'var(--accent-text)' : 'var(--text-muted)' }}
+              style={{
+                color: muted ? "var(--accent-text)" : "var(--text-muted)",
+              }}
             >
               <Icon.Volume muted={muted || volume === 0} />
             </button>
@@ -1696,7 +2071,7 @@ export default function App() {
             </div>
             <span
               className="w-9 shrink-0 text-right text-[0.7rem] font-semibold tabular-nums"
-              style={{ color: 'var(--text-muted)' }}
+              style={{ color: "var(--text-muted)" }}
             >
               {muted ? 0 : Math.round(volume)}
             </span>
@@ -1704,11 +2079,16 @@ export default function App() {
 
           {/* The real YouTube player. Parked off-screen in audio mode so
               playback, views and ads all keep working normally. */}
-          <div className={showVideo ? 'mt-5' : ''}>
-            <div className={`yt-stage ${showVideo ? 'neu-inset' : 'is-parked'}`}>
+          <div className={showVideo ? "mt-5" : ""}>
+            <div
+              className={`yt-stage ${showVideo ? "neu-inset" : "is-parked"}`}
+            >
               <div ref={mountRef} className="absolute inset-0 h-full w-full" />
               {!ready && showVideo && (
-                <div className="absolute inset-0 grid place-items-center text-xs" style={{ color: '#9aa0bd' }}>
+                <div
+                  className="absolute inset-0 grid place-items-center text-xs"
+                  style={{ color: "#9aa0bd" }}
+                >
                   loading player…
                 </div>
               )}
@@ -1717,13 +2097,22 @@ export default function App() {
         </section>
 
         {/* Queue ------------------------------------------------------ */}
-        <section aria-label="Queue" className="neu rounded-[1.75rem] p-5 sm:rounded-[2rem] sm:p-6">
+        <section
+          aria-label="Queue"
+          className="neu rounded-[1.75rem] p-5 sm:rounded-[2rem] sm:p-6"
+        >
           <div className="flex items-baseline justify-between gap-3">
-            <h2 className="font-display text-base font-extrabold sm:text-lg" style={{ color: 'var(--text-strong)' }}>
+            <h2
+              className="font-display text-base font-extrabold sm:text-lg"
+              style={{ color: "var(--text-strong)" }}
+            >
               Your queue
             </h2>
-            <p className="text-[0.7rem] font-semibold tabular-nums" style={{ color: 'var(--text-muted)' }}>
-              {tracks.length} {tracks.length === 1 ? 'song' : 'songs'}
+            <p
+              className="text-[0.7rem] font-semibold tabular-nums"
+              style={{ color: "var(--text-muted)" }}
+            >
+              {tracks.length} {tracks.length === 1 ? "song" : "songs"}
             </p>
           </div>
 
@@ -1733,10 +2122,16 @@ export default function App() {
               Paste a YouTube link
             </label>
             <div
-              className={`neu-inset flex items-center gap-2.5 rounded-2xl px-3.5 py-2 ${addError ? 'ring-2' : ''}`}
-              style={addError ? { boxShadow: 'inset 0 0 0 2px var(--danger)' } : undefined}
+              className={`neu-inset flex items-center gap-2.5 rounded-2xl px-3.5 py-2 ${
+                addError ? "ring-2" : ""
+              }`}
+              style={
+                addError
+                  ? { boxShadow: "inset 0 0 0 2px var(--danger)" }
+                  : undefined
+              }
             >
-              <span style={{ color: 'var(--text-muted)' }}>
+              <span style={{ color: "var(--text-muted)" }}>
                 <Icon.Link />
               </span>
               <input
@@ -1744,18 +2139,18 @@ export default function App() {
                 value={addValue}
                 onChange={(e) => {
                   setAddValue(e.target.value)
-                  setAddError('')
+                  setAddError("")
                 }}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') addTrack()
+                  if (e.key === "Enter") addTrack()
                 }}
                 placeholder="Paste a YouTube link…"
                 inputMode="url"
                 enterKeyHint="done"
                 aria-invalid={Boolean(addError)}
-                aria-describedby={addError ? 'add-link-error' : undefined}
+                aria-describedby={addError ? "add-link-error" : undefined}
                 className="w-full min-w-0 bg-transparent py-1.5 text-sm"
-                style={{ color: 'var(--text-strong)' }}
+                style={{ color: "var(--text-strong)" }}
               />
               <button
                 type="button"
@@ -1766,7 +2161,11 @@ export default function App() {
               </button>
             </div>
             {addError && (
-              <p id="add-link-error" className="mt-2 px-1 text-xs font-medium" style={{ color: 'var(--danger)' }}>
+              <p
+                id="add-link-error"
+                className="mt-2 px-1 text-xs font-medium"
+                style={{ color: "var(--danger)" }}
+              >
                 {addError}
               </p>
             )}
@@ -1774,7 +2173,7 @@ export default function App() {
 
           {/* Filter */}
           <div className="neu-inset mt-3 flex items-center gap-2.5 rounded-2xl px-3.5 py-2.5">
-            <span style={{ color: 'var(--text-muted)' }}>
+            <span style={{ color: "var(--text-muted)" }}>
               <Icon.Search />
             </span>
             <label htmlFor="filter-queue" className="sr-only">
@@ -1787,22 +2186,29 @@ export default function App() {
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Filter your queue…"
               className="w-full min-w-0 bg-transparent text-sm"
-              style={{ color: 'var(--text-strong)' }}
+              style={{ color: "var(--text-strong)" }}
             />
           </div>
 
-          <p className="mt-3 px-1 text-[0.68rem] font-medium" style={{ color: 'var(--text-muted)' }}>
-            Drag the handle to reorder · swipe a row left to remove · press Space to play or pause
+          <p
+            className="mt-3 px-1 text-[0.68rem] font-medium"
+            style={{ color: "var(--text-muted)" }}
+          >
+            Drag the handle to reorder · swipe a row left to remove · press
+            Space to play or pause
           </p>
 
-          <ul className="soft-scroll -mx-1 mt-2 max-h-[min(58dvh,520px)] space-y-2.5 overflow-y-auto px-1 pb-1 lg:max-h-[min(66dvh,640px)]">
+          {/* On phones the list flows with the page — a scroll box inside a
+              scrolling page traps the gesture. It only becomes its own
+              scroller at lg, where the player is pinned alongside it. */}
+          <ul className="soft-scroll -mx-1 mt-2 space-y-2.5 px-1 pb-1 lg:max-h-[min(66dvh,640px)] lg:overflow-y-auto">
             {filtered.length === 0 && (
               <li
                 className="neu-inset rounded-2xl px-5 py-10 text-center text-sm font-medium"
-                style={{ color: 'var(--text-muted)' }}
+                style={{ color: "var(--text-muted)" }}
               >
                 {tracks.length === 0
-                  ? 'Your queue is empty — search YouTube or paste a link to add a song.'
+                  ? "Your queue is empty — search YouTube or paste a link to add a song."
                   : `No songs match “${query}”.`}
               </li>
             )}
@@ -1825,9 +2231,14 @@ export default function App() {
       </main>
 
       <footer className="mx-auto mt-6 max-w-6xl px-2 text-center">
-        <p className="text-[0.7rem] leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-          Youtugtog plays through YouTube’s official embedded player, so views and ads count normally. Switch to{' '}
-          <strong style={{ color: 'var(--text)' }}>Video</strong> any time to bring the picture back.
+        <p
+          className="text-[0.7rem] leading-relaxed"
+          style={{ color: "var(--text-muted)" }}
+        >
+          Youtugtog plays through YouTube’s official embedded player, so views
+          and ads count normally. Switch to{" "}
+          <strong style={{ color: "var(--text)" }}>Video</strong> any time to
+          bring the picture back.
         </p>
       </footer>
 
@@ -1839,7 +2250,12 @@ export default function App() {
           onToggle={toggle}
           onNext={() => advance(1)}
           onPrev={() => advance(-1)}
-          onExpand={() => playerCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+          onExpand={() =>
+            playerCardRef.current?.scrollIntoView({
+              behavior: "smooth",
+              block: "start",
+            })
+          }
         />
       )}
 
@@ -1849,7 +2265,7 @@ export default function App() {
         query={searchQuery}
         setQuery={(v) => {
           setSearchQuery(v)
-          setSearchError('')
+          setSearchError("")
         }}
         onSearch={searchYouTube}
         loading={searchLoading}
