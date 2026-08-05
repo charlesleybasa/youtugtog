@@ -8,6 +8,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react"
+import { flushSync } from "react-dom"
 import logoUrl from "./imports/ChatGPT_Image_Jul_30__2026__01_48_16_PM.png"
 
 /* --------------------------------------------------------------------- *
@@ -23,6 +24,7 @@ import logoUrl from "./imports/ChatGPT_Image_Jul_30__2026__01_48_16_PM.png"
 
 type Track = { id: string; title: string; artist: string }
 type Repeat = "off" | "all" | "one"
+type Theme = "system" | "light" | "dark"
 type ToastState = {
   id: number
   message: string
@@ -82,6 +84,33 @@ function decodeEntities(value: string): string {
   return el.value
 }
 
+const PENDING_TITLE = "Added from YouTube"
+
+/**
+ * Resolve a real title/channel for a pasted link via YouTube's public oEmbed
+ * endpoint (no API key, CORS-enabled). Saved queues outlive the session now,
+ * so a persisted "Added from YouTube" placeholder would be there forever.
+ */
+async function fetchVideoMeta(
+  id: string,
+): Promise<{ title: string; artist: string } | null> {
+  try {
+    const target = `https://www.youtube.com/watch?v=${id}`
+    const res = await fetch(
+      `https://www.youtube.com/oembed?url=${encodeURIComponent(target)}&format=json`,
+    )
+    if (!res.ok) return null
+    const data = await res.json()
+    if (!data?.title) return null
+    return {
+      title: decodeEntities(String(data.title)),
+      artist: decodeEntities(String(data.author_name ?? "YouTube")),
+    }
+  } catch {
+    return null
+  }
+}
+
 const coverArt = (id: string) =>
   `https://i.ytimg.com/vi/${id}/maxresdefault.jpg`
 const coverArtFallback = (id: string) =>
@@ -95,9 +124,28 @@ type Persisted = {
   tracks?: Track[]
   currentId?: string
   volume?: number
+  theme?: Theme
+  /** Legacy pre-`theme` field, still read once so existing users keep their choice. */
   dark?: boolean
   repeat?: Repeat
   shuffle?: boolean
+  keepAwake?: boolean
+}
+
+const THEME_LABEL: Record<Theme, string> = {
+  system: "System",
+  light: "Light",
+  dark: "Dark",
+}
+const THEME_ORDER: Theme[] = ["system", "light", "dark"]
+
+/** Resolve the stored preference, migrating the old boolean if present. */
+function initialTheme(saved: Persisted): Theme {
+  if (saved.theme === "light" || saved.theme === "dark" || saved.theme === "system") {
+    return saved.theme
+  }
+  if (typeof saved.dark === "boolean") return saved.dark ? "dark" : "light"
+  return "system"
 }
 
 function loadPersisted(): Persisted {
@@ -110,6 +158,8 @@ function loadPersisted(): Persisted {
     return {}
   }
 }
+
+const wakeSupported = typeof navigator !== "undefined" && "wakeLock" in navigator
 
 function prefersDark(): boolean {
   return (
@@ -437,6 +487,60 @@ const Icon = {
       />
     </svg>
   ),
+  Awake: (p: { size?: number }) => (
+    <svg
+      width={p.size ?? 16}
+      height={p.size ?? 16}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <rect
+        x="6"
+        y="2.5"
+        width="12"
+        height="19"
+        rx="3"
+        stroke="currentColor"
+        strokeWidth="1.9"
+      />
+      <path
+        d="M12 6.8v4.4l2.6 1.6"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  ),
+  System: (p: { size?: number }) => (
+    <svg
+      width={p.size ?? 20}
+      height={p.size ?? 20}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <rect
+        x="2.5"
+        y="4"
+        width="19"
+        height="13"
+        rx="2.5"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
+      <path
+        d="M8.5 20.5h7"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <path d="M12 17v3.5" stroke="currentColor" strokeWidth="2" />
+      {/* half-filled screen = "follows your device" */}
+      <path d="M12 6.2v8.6a4.3 4.3 0 0 0 0-8.6Z" fill="currentColor" />
+    </svg>
+  ),
   Check: (p: { size?: number }) => (
     <svg
       width={p.size ?? 16}
@@ -481,6 +585,7 @@ function IconButton({
   label,
   pressed,
   title,
+  sizeClass,
 }: {
   children: ReactNode
   onClick?: () => void
@@ -488,6 +593,8 @@ function IconButton({
   label: string
   pressed?: boolean
   title?: string
+  /** Responsive sizing classes; when set, overrides the fixed `size` px. */
+  sizeClass?: string
 }) {
   return (
     <button
@@ -497,11 +604,10 @@ function IconButton({
       title={title ?? label}
       onClick={onClick}
       className={`neu-btn grid shrink-0 place-items-center rounded-full ${
-        pressed ? "is-pressed" : ""
-      }`}
+        sizeClass ?? ""
+      } ${pressed ? "is-pressed" : ""}`}
       style={{
-        width: size,
-        height: size,
+        ...(sizeClass ? null : { width: size, height: size }),
         color: pressed ? "var(--accent-text)" : "var(--text)",
       }}
     >
@@ -926,6 +1032,7 @@ function SearchModal({
   isQueued,
   onAdd,
   onPlay,
+  inputRef,
 }: {
   open: boolean
   onClose: () => void
@@ -938,16 +1045,20 @@ function SearchModal({
   isQueued: (id: string) => boolean
   onAdd: (t: Track) => void
   onPlay: (t: Track) => void
+  /** Owned by App so the opener can focus it inside the click gesture. */
+  inputRef: React.RefObject<HTMLInputElement | null>
 }) {
   const panelRef = useRef<HTMLDivElement | null>(null)
-  const inputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     if (!open) return
-    const returnTo = document.activeElement as HTMLElement | null
     const prevOverflow = document.body.style.overflow
     document.body.style.overflow = "hidden"
-    const focusTimer = window.setTimeout(() => inputRef.current?.focus(), 60)
+    // Fallback only: openSearch() already focuses synchronously. Focus
+    // restoration on close is handled by App, which knows the trigger.
+    const focusTimer = window.setTimeout(() => {
+      if (document.activeElement !== inputRef.current) inputRef.current?.focus()
+    }, 60)
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -976,9 +1087,8 @@ function SearchModal({
       window.clearTimeout(focusTimer)
       document.body.style.overflow = prevOverflow
       window.removeEventListener("keydown", onKeyDown, true)
-      returnTo?.focus?.()
     }
-  }, [open, onClose])
+  }, [open, onClose, inputRef])
 
   if (!open) return null
 
@@ -1273,11 +1383,17 @@ function Toast({
   toast: ToastState | null
   onDismiss: () => void
 }) {
+  // Keyed on the toast id only: the position poll re-renders App ~4x a
+  // second, and depending on `toast`/`onDismiss` identity would restart this
+  // timer every tick, so the toast would never auto-dismiss.
+  const dismissRef = useRef(onDismiss)
+  dismissRef.current = onDismiss
+  const toastId = toast?.id
   useEffect(() => {
-    if (!toast) return
-    const t = window.setTimeout(onDismiss, 4500)
+    if (!toastId) return
+    const t = window.setTimeout(() => dismissRef.current(), 4500)
     return () => window.clearTimeout(t)
-  }, [toast, onDismiss])
+  }, [toastId])
 
   if (!toast) return null
   return (
@@ -1323,9 +1439,16 @@ function Toast({
 export default function App() {
   const [saved] = useState<Persisted>(loadPersisted)
 
-  const [dark, setDark] = useState<boolean>(saved.dark ?? prefersDark())
+  const [theme, setTheme] = useState<Theme>(() => initialTheme(saved))
+  const [systemDark, setSystemDark] = useState<boolean>(prefersDark)
+  // "system" tracks the OS live, so a device switching to night mode is
+  // reflected without a reload; an explicit light/dark choice always wins.
+  const dark = theme === "system" ? systemDark : theme === "dark"
+  // Array.isArray, not `.length`: an empty saved queue is a deliberate user
+  // state ("I deleted everything"), not a missing one. Using truthiness here
+  // resurrected the starter list on the next visit.
   const [tracks, setTracks] = useState<Track[]>(
-    saved.tracks?.length ? saved.tracks : STARTER,
+    Array.isArray(saved.tracks) ? saved.tracks : STARTER,
   )
   const [query, setQuery] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
@@ -1349,6 +1472,7 @@ export default function App() {
   const [duration, setDuration] = useState(0)
   const [volume, setVolume] = useState<number>(saved.volume ?? 80)
   const [muted, setMuted] = useState(false)
+  const [keepAwake, setKeepAwake] = useState<boolean>(saved.keepAwake ?? false)
   const [repeat, setRepeat] = useState<Repeat>(saved.repeat ?? "off")
   const [shuffle, setShuffle] = useState<boolean>(saved.shuffle ?? false)
   const [dragId, setDragId] = useState<string | null>(null)
@@ -1361,6 +1485,12 @@ export default function App() {
   const transportRef = useRef<HTMLDivElement | null>(null)
   const playerCardRef = useRef<HTMLElement | null>(null)
   const tick = useRef<number | null>(null)
+  const searchInputRef = useRef<HTMLInputElement | null>(null)
+  // What the *user* asked for. `playing` mirrors the YouTube player, which a
+  // backgrounding browser can flip to paused on its own; this does not move.
+  const intendedPlayRef = useRef(false)
+  const wakeLockRef = useRef<any>(null)
+  const searchTriggerRef = useRef<HTMLElement | null>(null)
   const toastSeq = useRef(0)
 
   const currentIdx = Math.max(
@@ -1390,6 +1520,15 @@ export default function App() {
 
   /* ---- theme ---- */
   useEffect(() => {
+    const mq = window.matchMedia?.("(prefers-color-scheme: dark)")
+    if (!mq) return
+    setSystemDark(mq.matches)
+    const onChange = (e: MediaQueryListEvent) => setSystemDark(e.matches)
+    mq.addEventListener("change", onChange)
+    return () => mq.removeEventListener("change", onChange)
+  }, [])
+
+  useEffect(() => {
     document.documentElement.classList.toggle("dark", dark)
     document
       .querySelector('meta[name="theme-color"]')
@@ -1402,16 +1541,17 @@ export default function App() {
       tracks,
       currentId,
       volume,
-      dark,
+      theme,
       repeat,
       shuffle,
+      keepAwake,
     }
     try {
       localStorage.setItem(STORE_KEY, JSON.stringify(payload))
     } catch {
       /* storage full or blocked — playback is unaffected */
     }
-  }, [tracks, currentId, volume, dark, repeat, shuffle])
+  }, [tracks, currentId, volume, theme, repeat, shuffle, keepAwake])
 
   /* live refs so the YT event handlers always see fresh state */
   const stateRef = useRef({ tracks, currentId, repeat, shuffle })
@@ -1432,6 +1572,7 @@ export default function App() {
       nextIdx = (((idx + delta) % ts.length) + ts.length) % ts.length
     }
     setCurrentId(ts[nextIdx].id)
+    intendedPlayRef.current = true
     setPlaying(true)
   }, [])
 
@@ -1449,6 +1590,7 @@ export default function App() {
       return
     }
     if (!sh && idx === ts.length - 1 && rp === "off") {
+      intendedPlayRef.current = false
       setPlaying(false)
       return
     }
@@ -1538,8 +1680,13 @@ export default function App() {
   const toggle = useCallback(() => {
     const p = playerRef.current
     if (!p) return
-    if (playing) p.pauseVideo()
-    else p.playVideo()
+    if (playing) {
+      intendedPlayRef.current = false
+      p.pauseVideo()
+    } else {
+      intendedPlayRef.current = true
+      p.playVideo()
+    }
   }, [playing])
 
   const seekTo = useCallback((seconds: number) => {
@@ -1623,6 +1770,58 @@ export default function App() {
     }
   }, [playing, time, duration])
 
+  /* ---- staying alive in the background -----------------------------
+   * Mobile browsers suspend media for a backgrounded or locked page, and
+   * YouTube embeds are no exception — that is an OS policy a web page
+   * cannot opt out of. Two things are actually within reach:
+   *   1. an optional Screen Wake Lock, so the device stops auto-locking
+   *      mid-song in the first place;
+   *   2. resuming automatically when the user comes back, instead of
+   *      leaving them on a silently paused player.
+   */
+  const releaseWakeLock = useCallback(() => {
+    try {
+      wakeLockRef.current?.release?.()
+    } catch {
+      /* already released by the browser */
+    }
+    wakeLockRef.current = null
+  }, [])
+
+  const acquireWakeLock = useCallback(async () => {
+    if (!wakeSupported || wakeLockRef.current) return
+    try {
+      wakeLockRef.current = await (navigator as any).wakeLock.request("screen")
+      wakeLockRef.current?.addEventListener?.("release", () => {
+        wakeLockRef.current = null
+      })
+    } catch {
+      /* denied (low battery, not user-activated) — playback is unaffected */
+    }
+  }, [])
+
+  useEffect(() => {
+    if (keepAwake && playing) void acquireWakeLock()
+    else releaseWakeLock()
+  }, [keepAwake, playing, acquireWakeLock, releaseWakeLock])
+
+  useEffect(() => releaseWakeLock, [releaseWakeLock])
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return
+      if (keepAwake && intendedPlayRef.current) void acquireWakeLock()
+      const p = playerRef.current
+      // 2 === PAUSED. Only resume if the pause came from the browser, not
+      // from the user deliberately pausing before switching away.
+      if (intendedPlayRef.current && p?.getPlayerState?.() === 2) {
+        p.playVideo?.()
+      }
+    }
+    document.addEventListener("visibilitychange", onVisible)
+    return () => document.removeEventListener("visibilitychange", onVisible)
+  }, [keepAwake, acquireWakeLock])
+
   /* ---- show the mini player once the real transport scrolls away ---- */
   useEffect(() => {
     const el = transportRef.current
@@ -1633,6 +1832,22 @@ export default function App() {
     )
     io.observe(el)
     return () => io.disconnect()
+  }, [])
+
+  /* ---- search modal open/close ----------------------------------- *
+   * iOS only raises the soft keyboard when .focus() runs inside the user
+   * gesture. flushSync commits the modal to the DOM synchronously so the
+   * input exists and can be focused before the tap handler returns. */
+  const openSearch = useCallback(() => {
+    searchTriggerRef.current = document.activeElement as HTMLElement | null
+    flushSync(() => setSearchOpen(true))
+    searchInputRef.current?.focus({ preventScroll: true })
+  }, [])
+
+  const closeSearch = useCallback(() => {
+    setSearchOpen(false)
+    const trigger = searchTriggerRef.current
+    if (trigger?.isConnected) requestAnimationFrame(() => trigger.focus?.())
   }, [])
 
   /* ---- global keyboard shortcuts ---- */
@@ -1655,12 +1870,12 @@ export default function App() {
       else if (e.key === "m") setMuted((m) => !m)
       else if (e.key === "/") {
         e.preventDefault()
-        setSearchOpen(true)
+        openSearch()
       }
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [toggle, advance, searchOpen])
+  }, [toggle, advance, searchOpen, openSearch])
 
   /* ---- queue operations ---- */
 
@@ -1670,6 +1885,7 @@ export default function App() {
       return
     }
     setCurrentId(id)
+    intendedPlayRef.current = true
     setPlaying(true)
     playerRef.current?.playVideo?.()
   }
@@ -1709,6 +1925,45 @@ export default function App() {
     })
   }
 
+  /** Patch a queued track in place once its real metadata arrives. */
+  const resolveTrackMeta = useCallback(async (id: string) => {
+    const meta = await fetchVideoMeta(id)
+    if (!meta) {
+      setTracks((prev) =>
+        prev.map((t) =>
+          t.id === id && t.title === PENDING_TITLE
+            ? { ...t, artist: "Tap to play" }
+            : t,
+        ),
+      )
+      return
+    }
+    setTracks((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, ...meta } : t)),
+    )
+  }, [])
+
+  // Backfill anything saved before its title resolved (offline at the time,
+  // or added by an older build that never fetched metadata).
+  useEffect(() => {
+    const pending = tracks
+      .filter((t) => t.title === PENDING_TITLE)
+      .map((t) => t.id)
+    if (!pending.length) return
+    let cancelled = false
+    void (async () => {
+      for (const id of pending) {
+        if (cancelled) return
+        await resolveTrackMeta(id)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+    // Runs on mount only; newly added tracks resolve via addTrack directly.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const addTrack = () => {
     const id = parseVideoId(addValue)
     if (!id) {
@@ -1723,9 +1978,10 @@ export default function App() {
     }
     setTracks((prev) => [
       ...prev,
-      { id, title: "Added from YouTube", artist: "Tap to play" },
+      { id, title: PENDING_TITLE, artist: "Fetching details…" },
     ])
     notify("Added to the end of your queue")
+    void resolveTrackMeta(id)
   }
 
   const addSearchResult = (result: Track) => {
@@ -1738,6 +1994,7 @@ export default function App() {
     if (!tracks.some((t) => t.id === result.id))
       setTracks((prev) => [...prev, result])
     setCurrentId(result.id)
+    intendedPlayRef.current = true
     setPlaying(true)
     setSearchOpen(false)
   }
@@ -1845,6 +2102,16 @@ export default function App() {
         ? "Repeat all"
         : "Repeat one"
 
+  const nextTheme = THEME_ORDER[(THEME_ORDER.indexOf(theme) + 1) % THEME_ORDER.length]
+  const cycleTheme = () => {
+    setTheme(nextTheme)
+    notify(
+      nextTheme === "system"
+        ? "Theme: System — following your device"
+        : `Theme: ${THEME_LABEL[nextTheme]}`,
+    )
+  }
+
   return (
     <div className="min-h-dvh w-full px-3 pt-5 pb-28 sm:px-6 sm:pt-8 lg:px-10 lg:pb-10">
       {/* Header -------------------------------------------------------- */}
@@ -1873,7 +2140,7 @@ export default function App() {
         <div className="flex shrink-0 items-center gap-2">
           <button
             type="button"
-            onClick={() => setSearchOpen(true)}
+            onClick={openSearch}
             className="accent-btn hidden cursor-pointer items-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold sm:flex"
           >
             <Icon.Search size={16} />
@@ -1882,19 +2149,26 @@ export default function App() {
           <span className="sm:hidden">
             <IconButton
               label="Search YouTube"
-              onClick={() => setSearchOpen(true)}
+              onClick={openSearch}
               size={46}
             >
               <Icon.Search size={19} />
             </IconButton>
           </span>
           <IconButton
-            label={dark ? "Switch to light mode" : "Switch to dark mode"}
-            onClick={() => setDark((d) => !d)}
+            label={`Theme: ${THEME_LABEL[theme]}. Switch to ${THEME_LABEL[nextTheme]}.`}
+            title={`Theme: ${THEME_LABEL[theme]}`}
+            onClick={cycleTheme}
             size={46}
           >
             <span style={{ color: "var(--accent-text)" }}>
-              {dark ? <Icon.Sun /> : <Icon.Moon />}
+              {theme === "system" ? (
+                <Icon.System />
+              ) : theme === "dark" ? (
+                <Icon.Moon />
+              ) : (
+                <Icon.Sun />
+              )}
             </span>
           </IconButton>
         </div>
@@ -1905,7 +2179,9 @@ export default function App() {
         <section
           ref={playerCardRef}
           aria-label="Player"
-          className="neu rounded-[1.75rem] p-5 sm:rounded-[2rem] sm:p-6 lg:sticky lg:top-6 lg:self-start"
+          /* min-w-0: grid items default to min-width:auto, which lets long
+             track titles push the card wider than the viewport. */
+          className="neu min-w-0 rounded-[1.75rem] p-4 min-[360px]:p-5 sm:rounded-[2rem] sm:p-6 lg:sticky lg:top-6 lg:self-start"
         >
           <div className="flex items-center justify-between gap-2">
             <p
@@ -1941,7 +2217,7 @@ export default function App() {
 
           <div className="mt-6 text-center" aria-live="polite">
             <h1
-              className="font-display truncate text-lg font-extrabold sm:text-xl"
+              className="font-display line-clamp-2 text-lg font-extrabold text-balance break-words sm:text-xl"
               style={{ color: "var(--text-strong)" }}
               title={track?.title}
             >
@@ -1980,7 +2256,7 @@ export default function App() {
           {/* Transport */}
           <div
             ref={transportRef}
-            className="mt-5 flex items-center justify-center gap-2.5 sm:gap-4"
+            className="mt-5 flex items-center justify-center gap-1.5 min-[360px]:gap-2.5 sm:gap-4"
           >
             <IconButton
               label={shuffle ? "Shuffle on" : "Shuffle off"}
@@ -1988,7 +2264,7 @@ export default function App() {
                 setShuffle((s) => !s)
                 notify(shuffle ? "Shuffle off" : "Shuffle on")
               }}
-              size={44}
+              sizeClass="h-10 w-10 min-[360px]:h-11 min-[360px]:w-11"
               pressed={shuffle}
             >
               <Icon.Shuffle size={17} />
@@ -1997,7 +2273,7 @@ export default function App() {
             <IconButton
               label="Previous track"
               onClick={() => advance(-1)}
-              size={52}
+              sizeClass="h-[46px] w-[46px] min-[360px]:h-13 min-[360px]:w-13"
             >
               <Icon.Prev size={20} />
             </IconButton>
@@ -2006,19 +2282,23 @@ export default function App() {
               type="button"
               aria-label={playing ? "Pause" : "Play"}
               onClick={toggle}
-              className="accent-btn grid h-[68px] w-[68px] shrink-0 cursor-pointer place-items-center rounded-full"
+              className="accent-btn grid h-[58px] w-[58px] shrink-0 cursor-pointer place-items-center rounded-full min-[360px]:h-[68px] min-[360px]:w-[68px]"
             >
               {playing ? <Icon.Pause size={26} /> : <Icon.Play size={26} />}
             </button>
 
-            <IconButton label="Next track" onClick={() => advance(1)} size={52}>
+            <IconButton
+              label="Next track"
+              onClick={() => advance(1)}
+              sizeClass="h-[46px] w-[46px] min-[360px]:h-13 min-[360px]:w-13"
+            >
               <Icon.Next size={20} />
             </IconButton>
 
             <IconButton
               label={repeatLabel}
               onClick={cycleRepeat}
-              size={44}
+              sizeClass="h-10 w-10 min-[360px]:h-11 min-[360px]:w-11"
               pressed={repeat !== "off"}
             >
               {repeat === "one" ? (
@@ -2077,6 +2357,33 @@ export default function App() {
             </span>
           </div>
 
+          {wakeSupported && (
+            <div className="mt-4 flex justify-center">
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !keepAwake
+                  setKeepAwake(next)
+                  notify(
+                    next
+                      ? "Screen will stay on while playing"
+                      : "Screen can sleep again",
+                  )
+                }}
+                aria-pressed={keepAwake}
+                className={`neu-btn flex cursor-pointer items-center gap-2 rounded-full px-3.5 py-2.5 text-[0.68rem] font-bold ${
+                  keepAwake ? "is-pressed" : ""
+                }`}
+                style={{
+                  color: keepAwake ? "var(--accent-text)" : "var(--text-muted)",
+                }}
+              >
+                <Icon.Awake size={15} />
+                {keepAwake ? "Keeping screen on" : "Keep screen on"}
+              </button>
+            </div>
+          )}
+
           {/* The real YouTube player. Parked off-screen in audio mode so
               playback, views and ads all keep working normally. */}
           <div className={showVideo ? "mt-5" : ""}>
@@ -2099,7 +2406,7 @@ export default function App() {
         {/* Queue ------------------------------------------------------ */}
         <section
           aria-label="Queue"
-          className="neu rounded-[1.75rem] p-5 sm:rounded-[2rem] sm:p-6"
+          className="neu min-w-0 rounded-[1.75rem] p-5 sm:rounded-[2rem] sm:p-6"
         >
           <div className="flex items-baseline justify-between gap-3">
             <h2
@@ -2261,7 +2568,7 @@ export default function App() {
 
       <SearchModal
         open={searchOpen}
-        onClose={() => setSearchOpen(false)}
+        onClose={closeSearch}
         query={searchQuery}
         setQuery={(v) => {
           setSearchQuery(v)
@@ -2274,6 +2581,7 @@ export default function App() {
         isQueued={(id) => tracks.some((t) => t.id === id)}
         onAdd={addSearchResult}
         onPlay={playSearchResult}
+        inputRef={searchInputRef}
       />
 
       <Toast toast={toast} onDismiss={() => setToast(null)} />
