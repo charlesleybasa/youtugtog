@@ -1049,6 +1049,25 @@ function SearchModal({
   inputRef: React.RefObject<HTMLInputElement | null>
 }) {
   const panelRef = useRef<HTMLDivElement | null>(null)
+  // The bottom-sheet must track the *visual* viewport: iOS shrinks it when
+  // the soft keyboard opens but leaves fixed/layout-viewport elements at
+  // full height, which would leave the sheet stranded behind the keyboard.
+  const [viewport, setViewport] = useState<{ top: number; height: number } | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const vv = window.visualViewport
+    if (!vv) return
+    const update = () => setViewport({ top: vv.offsetTop, height: vv.height })
+    update()
+    vv.addEventListener("resize", update)
+    vv.addEventListener("scroll", update)
+    return () => {
+      vv.removeEventListener("resize", update)
+      vv.removeEventListener("scroll", update)
+      setViewport(null)
+    }
+  }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -1093,7 +1112,14 @@ function SearchModal({
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center px-3 py-3 sm:items-center sm:px-4 sm:py-6">
+    <div
+      className="fixed left-0 right-0 z-50 flex items-end justify-center px-3 py-3 sm:items-center sm:px-4 sm:py-6"
+      style={
+        viewport
+          ? { top: viewport.top, height: viewport.height }
+          : { top: 0, height: "100%" }
+      }
+    >
       <div
         className="modal-backdrop absolute inset-0"
         onClick={onClose}
@@ -1105,7 +1131,7 @@ function SearchModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="search-modal-title"
-        className="modal-panel neu safe-b relative z-10 flex max-h-[92dvh] w-full max-w-2xl flex-col rounded-[1.75rem] p-4 sm:rounded-[2rem] sm:p-6"
+        className="modal-panel neu safe-b relative z-10 flex max-h-full w-full max-w-2xl flex-col rounded-[1.75rem] p-4 sm:rounded-[2rem] sm:p-6"
       >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
