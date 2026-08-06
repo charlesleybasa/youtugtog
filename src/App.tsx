@@ -2206,13 +2206,25 @@ export default function App() {
             </button>
           </div>
 
+          {/* Audio → circular disc. Video → rectangular 16:9 frame in the
+              same spot. The player mount is always rendered (parked off
+              screen in audio mode) so it is never re-created and audio keeps
+              playing across the toggle. */}
           <div className="mt-5 sm:mt-6">
-            <CircularCover
-              trackId={track?.id}
-              playing={playing}
-              progress={progress}
-              ready={ready}
-            />
+            {!showVideo && (
+              <CircularCover
+                trackId={track?.id}
+                playing={playing}
+                progress={progress}
+                ready={ready}
+              />
+            )}
+            <div className={`disc-video ${showVideo ? "" : "is-parked"}`}>
+              <div ref={mountRef} />
+              {showVideo && !ready && (
+                <div className="disc-video__loading">loading player…</div>
+              )}
+            </div>
           </div>
 
           <div className="mt-6 text-center" aria-live="polite">
@@ -2383,24 +2395,6 @@ export default function App() {
               </button>
             </div>
           )}
-
-          {/* The real YouTube player. Parked off-screen in audio mode so
-              playback, views and ads all keep working normally. */}
-          <div className={showVideo ? "mt-5" : ""}>
-            <div
-              className={`yt-stage ${showVideo ? "neu-inset" : "is-parked"}`}
-            >
-              <div ref={mountRef} className="absolute inset-0 h-full w-full" />
-              {!ready && showVideo && (
-                <div
-                  className="absolute inset-0 grid place-items-center text-xs"
-                  style={{ color: "#9aa0bd" }}
-                >
-                  loading player…
-                </div>
-              )}
-            </div>
-          </div>
         </section>
 
         {/* Queue ------------------------------------------------------ */}

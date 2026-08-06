@@ -429,30 +429,57 @@ body {
 }
 
 /* =====================================================================
- * Hidden YouTube stage — audio-only playback
+ * YouTube video frame — rectangular 16:9, shown only in Video mode
  * The official IFrame player stays mounted and rendered (so playback,
- * views and ads all behave normally); it is simply parked behind the
- * page instead of being torn down.
+ * views and ads all behave normally). In audio mode it is parked off
+ * screen rather than torn down, so audio keeps playing across the toggle;
+ * toggling Video reveals it as a rounded rectangle in the disc's place.
  * ===================================================================== */
-.yt-stage {
+.disc-video {
   position: relative;
+  width: 100%;
   border-radius: var(--r-lg);
   overflow: hidden;
   background: #000;
   aspect-ratio: 16 / 9;
-  transition: opacity var(--dur-slow) var(--ease);
+  box-shadow:
+    inset 5px 5px 11px var(--sh-dark),
+    inset -5px -5px 11px var(--sh-light);
+  animation: fade-in var(--dur) var(--ease);
 }
 
-.yt-stage.is-parked {
+.disc-video iframe,
+.disc-video > div {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.disc-video.is-parked {
   position: fixed;
   bottom: 0;
   right: 0;
   width: 320px;
   height: 180px;
   aspect-ratio: auto;
+  border-radius: 0;
+  box-shadow: none;
   opacity: 0;
   z-index: -1;
   pointer-events: none;
+  animation: none;
+}
+
+.disc-video__loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 0.7rem;
+  color: #9aa0bd;
+  background: #000;
 }
 
 /* =====================================================================
