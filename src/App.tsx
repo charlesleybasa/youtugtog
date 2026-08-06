@@ -1398,7 +1398,7 @@ function Toast({
   if (!toast) return null
   return (
     <div
-      className="toast neu fixed bottom-24 left-1/2 z-[60] flex max-w-[92vw] items-center gap-3 rounded-2xl px-4 py-3 lg:bottom-6"
+      className="toast neu fixed bottom-24 left-1/2 z-[60] flex w-max max-w-[92vw] -translate-x-1/2 items-center gap-3 rounded-2xl px-4 py-3 lg:bottom-6"
       style={{ background: "var(--panel-raised)" }}
       role="status"
       aria-live="polite"
