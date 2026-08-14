@@ -29,6 +29,7 @@ import { pickNextShuffledId } from "./shuffle"
 type Track = { id: string; title: string; artist: string }
 type Repeat = "off" | "all" | "one"
 type Theme = "system" | "light" | "dark"
+type Stage = "art" | "lyrics" | "video"
 type ToastState = {
   id: number
   message: string
@@ -125,6 +126,200 @@ const rowThumb = (id: string) => `https://i.ytimg.com/vi/${id}/mqdefault.jpg`
 const clamp = (n: number, min: number, max: number) =>
   Math.min(max, Math.max(min, n))
 
+/* ---- Lyrics ---------------------------------------------------------- *
+ * LRCLIB sends no CORS headers, so lyrics come through /api/lyrics.
+ * It is line-level only — no Apple-style word-by-word sweep is possible
+ * from this data, so we highlight whole lines (TIDAL-style).
+ * --------------------------------------------------------------------- */
+
+type LyricLine = { time: number; text: string }
+type Lyrics =
+  | { kind: "synced"; lines: LyricLine[] }
+  | { kind: "plain"; text: string }
+  | { kind: "instrumental" }
+  | { kind: "none" }
+
+const LYRICS_CACHE_KEY = "youtugtog:lyrics:v1"
+
+/** Noise YouTube uploaders append that would break a lyrics lookup. */
+const TITLE_NOISE =
+  /\s*[([][^)\]]*(official|lyric|audio|video|hd|4k|mv|m\/v|visualizer|remaster|explicit|clip|performance|version)[^)\]]*[)\]]/gi
+
+/**
+ * YouTube gives us "Ed Sheeran - Shape of You (Official Video)" and a channel
+ * like "Ed SheeranVEVO". LRCLIB wants a clean artist + track pair.
+ */
+export function parseTrackMeta(track: Track): { track: string; artist: string } {
+  const cleanedTitle = decodeEntities(track.title)
+    .replace(TITLE_NOISE, "")
+    .replace(/\s*[|｜]\s*.*$/, "")
+    .trim()
+
+  const channel = decodeEntities(track.artist)
+    .replace(/\s*-\s*Topic$/i, "")
+    .replace(/VEVO$/i, "")
+    .trim()
+
+  // "Artist - Title" is by far the most common shape.
+  const split = cleanedTitle.split(/\s+[-–—]\s+/)
+  if (split.length >= 2) {
+    const [maybeArtist, ...rest] = split
+    return {
+      artist: maybeArtist.trim() || channel,
+      track: rest.join(" - ").trim(),
+    }
+  }
+
+  return { artist: channel, track: cleanedTitle }
+}
+
+/** Parse standard LRC: "[mm:ss.xx] text", honouring an [offset:±ms] tag. */
+export function parseLrc(raw: string): LyricLine[] {
+  const lines: LyricLine[] = []
+  let offset = 0
+
+  for (const row of raw.split(/\r?\n/)) {
+    const offsetTag = row.match(/^\s*\[offset:\s*([+-]?\d+)\s*\]/i)
+    if (offsetTag) {
+      offset = Number(offsetTag[1]) / 1000
+      continue
+    }
+
+    const stamps = [...row.matchAll(/\[(\d+):(\d{1,2})(?:[.:](\d{1,3}))?\]/g)]
+    if (!stamps.length) continue
+
+    const text = row.replace(/\[[^\]]*\]/g, "").trim()
+    for (const [, m, s, frac] of stamps) {
+      const fraction = frac ? Number(frac.padEnd(3, "0")) / 1000 : 0
+      lines.push({ time: Number(m) * 60 + Number(s) + fraction + offset, text })
+    }
+  }
+
+  return lines.sort((a, b) => a.time - b.time)
+}
+
+/** Index of the line active at `time`; -1 before the first line. */
+export function activeLineIndex(lines: LyricLine[], time: number): number {
+  let lo = 0
+  let hi = lines.length - 1
+  let found = -1
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1
+    if (lines[mid].time <= time) {
+      found = mid
+      lo = mid + 1
+    } else {
+      hi = mid - 1
+    }
+  }
+  return found
+}
+
+/** Whole cache, keyed by YouTube video id. Misses are cached too. */
+export function readLyricsCache(): Record<string, Lyrics> {
+  try {
+    const raw = localStorage.getItem(LYRICS_CACHE_KEY)
+    const parsed = raw ? JSON.parse(raw) : {}
+    return parsed && typeof parsed === "object" ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+export function cacheLyrics(cacheKey: string, lyrics: Lyrics): void {
+  try {
+    const cache = readLyricsCache()
+    cache[cacheKey] = lyrics
+    localStorage.setItem(LYRICS_CACHE_KEY, JSON.stringify(cache))
+  } catch {
+    /* storage full or blocked — lyrics still work for this session */
+  }
+}
+
+/**
+ * Fetch synced lyrics from LRCLIB, parse the LRC timestamps into
+ * `{ time, text }` lines, and seed the cache.
+ *
+ * Goes through `/api/lyrics` rather than hitting lrclib.net directly:
+ * LRCLIB sends no CORS headers, so a browser request to it always fails.
+ * The proxy maps these params onto LRCLIB's `track_name` / `artist_name` /
+ * `album_name` / `duration`.
+ */
+export async function fetchSyncedLyrics({
+  trackName,
+  artistName,
+  albumName,
+  duration,
+  cacheKey,
+  signal,
+}: {
+  trackName: string
+  artistName?: string
+  albumName?: string
+  duration?: number
+  /** When given, the result (including a miss) is written to the cache. */
+  cacheKey?: string
+  signal?: AbortSignal
+}): Promise<Lyrics> {
+  const name = trackName.trim()
+  if (!name) return { kind: "none" }
+
+  const url = new URL("/api/lyrics", window.location.origin)
+  url.searchParams.set("track", name)
+  if (artistName?.trim()) url.searchParams.set("artist", artistName.trim())
+  if (albumName?.trim()) url.searchParams.set("album", albumName.trim())
+  if (duration && duration > 0) {
+    url.searchParams.set("duration", String(Math.round(duration)))
+  }
+
+  let result: Lyrics = { kind: "none" }
+  try {
+    const res = await fetch(url.toString(), { signal })
+    if (res.ok) {
+      const data = await res.json()
+      if (data?.instrumental) {
+        result = { kind: "instrumental" }
+      } else if (
+        typeof data?.syncedLyrics === "string" &&
+        data.syncedLyrics.trim()
+      ) {
+        const lines = parseLrc(data.syncedLyrics)
+        result = lines.length
+          ? { kind: "synced", lines }
+          : { kind: "plain", text: data.syncedLyrics.trim() }
+      } else if (
+        typeof data?.plainLyrics === "string" &&
+        data.plainLyrics.trim()
+      ) {
+        result = { kind: "plain", text: data.plainLyrics.trim() }
+      }
+    }
+  } catch (error) {
+    // A cancelled request must not be cached as a miss.
+    if ((error as Error)?.name === "AbortError") throw error
+    result = { kind: "none" }
+  }
+
+  if (cacheKey) cacheLyrics(cacheKey, result)
+  return result
+}
+
+/** Convenience wrapper: derive LRCLIB params from a YouTube-shaped track. */
+export function fetchLyricsForTrack(
+  track: Track,
+  duration: number,
+  signal?: AbortSignal,
+): Promise<Lyrics> {
+  const meta = parseTrackMeta(track)
+  return fetchSyncedLyrics({
+    trackName: meta.track,
+    artistName: meta.artist,
+    duration,
+    cacheKey: track.id,
+    signal,
+  })
+}
+
 type Persisted = {
   tracks?: Track[]
   currentId?: string | null
@@ -136,6 +331,8 @@ type Persisted = {
   repeat?: Repeat
   shuffle?: boolean
   keepAwake?: boolean
+  /** Per-video lyric timing nudge, keyed by video id. */
+  lyricOffsets?: Record<string, number>
 }
 
 const THEME_LABEL: Record<Theme, string> = {
@@ -199,6 +396,13 @@ function defaultPlaylistName(): string {
 
 const wakeSupported =
   typeof navigator !== "undefined" && "wakeLock" in navigator
+
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+  )
+}
 
 function prefersDark(): boolean {
   return (
@@ -822,6 +1026,242 @@ function Slider({
 }
 
 /* ---- Circular cover ------------------------------------------------- */
+
+/* ---- Lyrics stage ---------------------------------------------------- */
+
+function LyricsStage({
+  lyrics,
+  loading,
+  getTime,
+  playing,
+  onSeek,
+  offset,
+  onOffsetChange,
+}: {
+  lyrics: Lyrics | null
+  loading: boolean
+  /** Reads live position; the 250ms state poll is too coarse to drive this. */
+  getTime: () => number
+  playing: boolean
+  onSeek: (seconds: number) => void
+  offset: number
+  onOffsetChange: (next: number) => void
+}) {
+  const scrollRef = useRef<HTMLDivElement | null>(null)
+  const [active, setActive] = useState(-1)
+  const [autoScroll, setAutoScroll] = useState(true)
+  const autoScrollRef = useRef(true)
+  const programmaticScroll = useRef(false)
+  const programmaticTimer = useRef<number | null>(null)
+  const recoverTimer = useRef<number | null>(null)
+  const focusInside = useRef(false)
+
+  /**
+   * Smooth scrolling keeps emitting scroll events well past any short timer,
+   * so a fixed guard makes our own animation look like a user swipe and
+   * wrongly kills auto-scroll. Prefer the real `scrollend` event and fall
+   * back to a generous timeout where it is unsupported.
+   */
+  const beginProgrammaticScroll = useCallback(() => {
+    const container = scrollRef.current
+    programmaticScroll.current = true
+    if (programmaticTimer.current) window.clearTimeout(programmaticTimer.current)
+
+    const done = () => {
+      programmaticScroll.current = false
+      container?.removeEventListener("scrollend", done)
+      if (programmaticTimer.current) {
+        window.clearTimeout(programmaticTimer.current)
+        programmaticTimer.current = null
+      }
+    }
+
+    if (container && "onscrollend" in window) {
+      container.addEventListener("scrollend", done, { once: true })
+    }
+    // Fallback / safety net: longer than any realistic smooth-scroll run.
+    programmaticTimer.current = window.setTimeout(done, 1200)
+  }, [])
+
+  const synced = lyrics?.kind === "synced" ? lyrics.lines : null
+
+  /* Drive the active line from rAF, not the 250ms poll, so the highlight
+     lands on the beat rather than up to a quarter-second late. */
+  useEffect(() => {
+    if (!synced) return
+    let raf = 0
+    const tick = () => {
+      const idx = activeLineIndex(synced, getTime() - offset)
+      setActive((prev) => (prev === idx ? prev : idx))
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [synced, getTime, offset])
+
+  /* Keep the active line anchored at the vertical centre (AMLL's default). */
+  useEffect(() => {
+    if (!synced || active < 0) return
+    if (!autoScrollRef.current || focusInside.current) return
+    const container = scrollRef.current
+    const el = container?.querySelector<HTMLElement>(`[data-line="${active}"]`)
+    if (!container || !el) return
+
+    const target =
+      el.offsetTop - container.clientHeight / 2 + el.offsetHeight / 2
+    beginProgrammaticScroll()
+    container.scrollTo({
+      top: Math.max(0, target),
+      behavior: prefersReducedMotion() ? "auto" : "smooth",
+    })
+  }, [active, synced, beginProgrammaticScroll])
+
+  const onManualScroll = () => {
+    if (programmaticScroll.current) return
+    autoScrollRef.current = false
+    setAutoScroll(false)
+    if (recoverTimer.current) window.clearTimeout(recoverTimer.current)
+    // react-lrc's default: silently resume after 5s of no interaction.
+    recoverTimer.current = window.setTimeout(() => {
+      if (focusInside.current) return
+      autoScrollRef.current = true
+      setAutoScroll(true)
+    }, 5000)
+  }
+
+  const resumeAutoScroll = () => {
+    if (recoverTimer.current) window.clearTimeout(recoverTimer.current)
+    autoScrollRef.current = true
+    setAutoScroll(true)
+    setActive((a) => a) // re-trigger the anchor effect
+    const container = scrollRef.current
+    const el = container?.querySelector<HTMLElement>(`[data-line="${active}"]`)
+    if (container && el) {
+      beginProgrammaticScroll()
+      container.scrollTo({
+        top: Math.max(0, el.offsetTop - container.clientHeight / 2 + el.offsetHeight / 2),
+        behavior: prefersReducedMotion() ? "auto" : "smooth",
+      })
+    }
+  }
+
+  useEffect(
+    () => () => {
+      if (recoverTimer.current) window.clearTimeout(recoverTimer.current)
+      if (programmaticTimer.current) window.clearTimeout(programmaticTimer.current)
+    },
+    [],
+  )
+
+  if (loading) {
+    return (
+      <div className="lyrics-stage" aria-busy="true">
+        <div className="lyrics-scroll lyrics-skeletons">
+          {[88, 72, 94, 64, 80, 70].map((w, i) => (
+            <span key={i} className="skeleton lyrics-skel" style={{ width: `${w}%` }} />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  if (!lyrics || lyrics.kind === "none") {
+    return (
+      <div className="lyrics-stage">
+        <p className="lyrics-empty">No lyrics found for this track.</p>
+      </div>
+    )
+  }
+
+  if (lyrics.kind === "instrumental") {
+    return (
+      <div className="lyrics-stage">
+        <p className="lyrics-empty">♪ Instrumental — no lyrics for this one.</p>
+      </div>
+    )
+  }
+
+  if (lyrics.kind === "plain") {
+    return (
+      <div className="lyrics-stage">
+        <p className="lyrics-badge">Unsynced lyrics</p>
+        <div className="lyrics-scroll" ref={scrollRef}>
+          {lyrics.text.split(/\n/).map((line, i) => (
+            <p key={i} className="lyrics-line is-plain">
+              {line || " "}
+            </p>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  const lines = lyrics.lines
+  return (
+    <div className="lyrics-stage">
+      <div
+        ref={scrollRef}
+        onScroll={onManualScroll}
+        onFocus={() => {
+          focusInside.current = true
+        }}
+        onBlur={() => {
+          focusInside.current = false
+        }}
+        className="lyrics-scroll"
+        // Deliberately NOT aria-live: a line changing every few seconds would
+        // flood the screen reader and the user would fall behind the music.
+        // The list is plain navigable text; aria-current marks the active line.
+        role="group"
+        aria-label="Lyrics"
+      >
+        {lines.map((line, i) => {
+          const distance = Math.abs(i - active)
+          return (
+            <button
+              key={i}
+              type="button"
+              data-line={i}
+              aria-current={i === active ? "true" : undefined}
+              onClick={() => onSeek(Math.max(0, line.time + offset))}
+              className={`lyrics-line ${i === active ? "is-active" : ""} ${
+                distance >= 2 ? "is-far" : ""
+              } ${i < active ? "is-passed" : ""}`}
+            >
+              {line.text || "♪"}
+            </button>
+          )
+        })}
+      </div>
+
+      {!autoScroll && (
+        <button type="button" className="lyrics-jump" onClick={resumeAutoScroll}>
+          Jump to current
+        </button>
+      )}
+
+      <div className="lyrics-offset">
+        <button
+          type="button"
+          aria-label="Shift lyrics half a second earlier"
+          onClick={() => onOffsetChange(Math.round((offset - 0.5) * 10) / 10)}
+        >
+          −
+        </button>
+        <span aria-live="off">
+          {offset === 0 ? "Sync" : `${offset > 0 ? "+" : ""}${offset.toFixed(1)}s`}
+        </span>
+        <button
+          type="button"
+          aria-label="Shift lyrics half a second later"
+          onClick={() => onOffsetChange(Math.round((offset + 0.5) * 10) / 10)}
+        >
+          +
+        </button>
+      </div>
+    </div>
+  )
+}
 
 function CircularCover({
   trackId,
@@ -1610,7 +2050,13 @@ export default function App() {
   const [repeat, setRepeat] = useState<Repeat>(saved.repeat ?? "off")
   const [shuffle, setShuffle] = useState<boolean>(saved.shuffle ?? false)
   const [dragId, setDragId] = useState<string | null>(null)
-  const [showVideo, setShowVideo] = useState(false)
+  const [stage, setStage] = useState<Stage>("art")
+  const showVideo = stage === "video"
+  const [lyrics, setLyrics] = useState<Lyrics | null>(null)
+  const [lyricsLoading, setLyricsLoading] = useState(false)
+  const [lyricOffsets, setLyricOffsets] = useState<Record<string, number>>(
+    () => saved.lyricOffsets ?? {},
+  )
   const [showMini, setShowMini] = useState(false)
   const [toast, setToast] = useState<ToastState | null>(null)
 
@@ -1683,6 +2129,7 @@ export default function App() {
       repeat,
       shuffle,
       keepAwake,
+      lyricOffsets,
     }
     try {
       localStorage.setItem(STORE_KEY, JSON.stringify(payload))
@@ -1698,6 +2145,7 @@ export default function App() {
     repeat,
     shuffle,
     keepAwake,
+    lyricOffsets,
   ])
 
   /* live refs so the YT event handlers always see fresh state */
@@ -1985,6 +2433,54 @@ export default function App() {
     document.addEventListener("visibilitychange", onVisible)
     return () => document.removeEventListener("visibilitychange", onVisible)
   }, [keepAwake, acquireWakeLock])
+
+  /* ---- lyrics ------------------------------------------------------- *
+   * Fetched lazily the first time the Lyrics stage is opened for a track,
+   * then cached (including misses) so replaying never refetches. */
+  const getLiveTime = useCallback(
+    () => playerRef.current?.getCurrentTime?.() ?? 0,
+    [],
+  )
+
+  const lyricOffset = track ? (lyricOffsets[track.id] ?? 0) : 0
+  const setLyricOffset = useCallback(
+    (next: number) => {
+      if (!track) return
+      setLyricOffsets((prev) => ({ ...prev, [track.id]: next }))
+    },
+    [track],
+  )
+
+  useEffect(() => {
+    if (stage !== "lyrics" || !track) return
+    const cached = readLyricsCache()[track.id]
+    if (cached) {
+      setLyrics(cached)
+      setLyricsLoading(false)
+      return
+    }
+
+    const controller = new AbortController()
+    setLyricsLoading(true)
+    setLyrics(null)
+
+    fetchLyricsForTrack(track, duration, controller.signal)
+      .then((result) => {
+        if (controller.signal.aborted) return
+        setLyrics(result)
+        setLyricsLoading(false)
+      })
+      .catch((error) => {
+        if ((error as Error)?.name === "AbortError") return
+        setLyrics({ kind: "none" })
+        setLyricsLoading(false)
+      })
+
+    return () => controller.abort()
+    // duration is intentionally excluded: it settles shortly after load and
+    // re-running would refetch mid-song for no benefit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage, track?.id])
 
   /* ---- show the mini player once the real transport scrolls away ---- */
   useEffect(() => {
@@ -2506,33 +3002,49 @@ export default function App() {
             >
               {buffering ? "Buffering" : playing ? "Playing now" : "Paused"}
             </p>
-            <button
-              type="button"
-              onClick={() => setShowVideo((v) => !v)}
-              aria-pressed={showVideo}
-              className={`neu-btn flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-2 text-[0.68rem] font-bold uppercase tracking-wider ${
-                showVideo ? "is-pressed" : ""
-              }`}
-              style={{
-                color: showVideo ? "var(--accent-text)" : "var(--text-muted)",
-              }}
-            >
-              <Icon.Video size={15} off={!showVideo} />
-              {showVideo ? "Video" : "Audio"}
-            </button>
+            <div className="neu-inset stage-switch" role="group" aria-label="View">
+              {(
+                [
+                  ["art", "Art"],
+                  ["lyrics", "Lyrics"],
+                  ["video", "Video"],
+                ] as [Stage, string][]
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setStage(value)}
+                  aria-pressed={stage === value}
+                  className={stage === value ? "is-on" : ""}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
 
-          {/* Audio → circular disc. Video → rectangular 16:9 frame in the
-              same spot. The player mount is always rendered (parked off
-              screen in audio mode) so it is never re-created and audio keeps
-              playing across the toggle. */}
+          {/* Art → circular disc. Lyrics → synced list. Video → 16:9 frame.
+              All three occupy the same slot. The player mount is always
+              rendered (parked off screen unless Video) so it is never
+              re-created and audio keeps playing across every switch. */}
           <div className="mt-5 sm:mt-6">
-            {!showVideo && (
+            {stage === "art" && (
               <CircularCover
                 trackId={track?.id}
                 playing={playing}
                 progress={progress}
                 ready={ready}
+              />
+            )}
+            {stage === "lyrics" && (
+              <LyricsStage
+                lyrics={lyrics}
+                loading={lyricsLoading}
+                getTime={getLiveTime}
+                playing={playing}
+                onSeek={seekTo}
+                offset={lyricOffset}
+                onOffsetChange={setLyricOffset}
               />
             )}
             <div className={`disc-video ${showVideo ? "" : "is-parked"}`}>

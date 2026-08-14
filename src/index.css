@@ -435,6 +435,220 @@ body {
  * screen rather than torn down, so audio keeps playing across the toggle;
  * toggling Video reveals it as a rounded rectangle in the disc's place.
  * ===================================================================== */
+/* =====================================================================
+ * Stage switch (Art / Lyrics / Video)
+ * ===================================================================== */
+.stage-switch {
+  display: flex;
+  gap: 2px;
+  border-radius: 999px;
+  padding: 3px;
+}
+
+.stage-switch button {
+  border: 0;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.4rem 0.6rem;
+  border-radius: 999px;
+  transition:
+    color var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease),
+    background var(--dur) var(--ease);
+}
+
+@media (min-width: 360px) {
+  .stage-switch button {
+    padding: 0.4rem 0.8rem;
+  }
+}
+
+.stage-switch button.is-on {
+  color: var(--accent-text);
+  background: var(--panel);
+  box-shadow:
+    3px 3px 7px var(--sh-dark),
+    -3px -3px 7px var(--sh-light);
+}
+
+/* =====================================================================
+ * Lyrics — line-level synced (LRCLIB provides no word-level timing)
+ * ===================================================================== */
+.lyrics-stage {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.lyrics-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  overscroll-behavior: contain;
+  /* Padding so the first and last lines can still reach the centre anchor. */
+  padding: 42% 0.25rem;
+  text-align: center;
+  scroll-behavior: smooth;
+}
+
+.lyrics-scroll::-webkit-scrollbar {
+  width: 0;
+}
+
+.lyrics-line {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.45;
+  padding: 0.42rem 0.5rem;
+  border-radius: 0.75rem;
+  /* De-emphasis uses colour + scale + blur, never a low opacity fade:
+     on this soft-grey panel a 40%-opacity line drops under 4.5:1. */
+  color: var(--text-muted);
+  transform: scale(0.96);
+  transform-origin: center;
+  transition:
+    color var(--dur) var(--ease),
+    transform 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter var(--dur) var(--ease);
+}
+
+.lyrics-line.is-far {
+  /* Blur only lines 2+ away — blurred text is itself a contrast hazard. */
+  filter: blur(1.4px);
+}
+
+.lyrics-line.is-active {
+  color: var(--text-strong);
+  transform: scale(1.06);
+  filter: none;
+}
+
+@media (hover: hover) {
+  .lyrics-line:hover {
+    color: var(--accent-text);
+  }
+}
+
+.lyrics-line.is-plain {
+  cursor: default;
+  transform: none;
+  filter: none;
+  color: var(--text);
+}
+
+.lyrics-badge,
+.lyrics-empty {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.lyrics-empty {
+  margin: auto;
+  padding: 0 1.5rem;
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+.lyrics-jump {
+  position: absolute;
+  bottom: 2.6rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  cursor: pointer;
+  border: 0;
+  font: inherit;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.45rem 0.9rem;
+  border-radius: 999px;
+  color: var(--accent-contrast);
+  background: var(--accent-fill);
+  box-shadow: 0 6px 18px var(--art-glow);
+  animation: fade-in var(--dur) var(--ease);
+}
+
+.lyrics-offset {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding-top: 0.35rem;
+  color: var(--text-muted);
+  font-size: 0.66rem;
+  font-weight: 700;
+}
+
+.lyrics-offset button {
+  width: 26px;
+  height: 26px;
+  border: 0;
+  cursor: pointer;
+  border-radius: 50%;
+  background: var(--panel);
+  color: inherit;
+  font: inherit;
+  font-size: 0.9rem;
+  line-height: 1;
+  box-shadow:
+    3px 3px 6px var(--sh-dark),
+    -3px -3px 6px var(--sh-light);
+}
+
+.lyrics-offset button:active {
+  box-shadow:
+    inset 2px 2px 5px var(--sh-dark),
+    inset -2px -2px 5px var(--sh-light);
+}
+
+.lyrics-offset span {
+  min-width: 3.2rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.lyrics-skeletons {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.lyrics-skel {
+  height: 0.85rem;
+  border-radius: 999px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lyrics-scroll {
+    scroll-behavior: auto;
+  }
+  .lyrics-line {
+    /* Keep the highlight; drop the movement and the blur. */
+    transform: none !important;
+    filter: none !important;
+  }
+}
+
 .disc-video {
   position: relative;
   width: 100%;
