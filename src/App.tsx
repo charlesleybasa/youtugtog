@@ -2435,7 +2435,7 @@ export default function App() {
               className="mt-1 truncate text-[0.68rem] font-medium sm:text-xs"
               style={{ color: "var(--text-muted)" }}
             >
-              Tutog Pinoy anytime
+              Tugtog Pinoy anytime
             </p>
           </div>
         </div>
