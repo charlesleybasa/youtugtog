@@ -1718,22 +1718,15 @@ export default function App() {
     if (!ts.length) return
     const idx = ts.findIndex((t) => t.id === cid)
     let nextIdx: number
-<<<<<<< HEAD
     if (idx < 0) {
       nextIdx = delta < 0 ? ts.length - 1 : 0
     } else if (sh && ts.length > 1) {
-      do {
-        nextIdx = Math.floor(Math.random() * ts.length)
-      } while (nextIdx === idx)
-=======
-    if (sh && ts.length > 1) {
       const nextId = pickNextShuffledId(
         ts.map((item) => item.id),
         cid,
         shufflePlayedRef.current,
       )
       nextIdx = ts.findIndex((item) => item.id === nextId)
->>>>>>> shuffle-songs-fix
     } else {
       nextIdx = (((idx + delta) % ts.length) + ts.length) % ts.length
     }

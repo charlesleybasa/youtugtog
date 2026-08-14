@@ -5,7 +5,7 @@
  */
 export function pickNextShuffledId(
   trackIds: string[],
-  currentId: string,
+  currentId: string | null,
   played: Set<string>,
   random: () => number = Math.random,
 ): string | null {
