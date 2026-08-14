@@ -16,7 +16,7 @@ import SavedPlaylistsModal, {
 import { pickNextShuffledId } from "./shuffle"
 
 /* --------------------------------------------------------------------- *
- * Youtugtog — "Tutog Pinoy anytime".
+ * Youtugtog — "Tugtog Pinoy anytime".
  *
  * Playback runs through the OFFICIAL YouTube IFrame Player API. We never
  * extract or re-host audio streams — the real player stays mounted and

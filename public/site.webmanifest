@@ -1,7 +1,7 @@
 {
   "name": "Youtugtog",
   "short_name": "Youtugtog",
-  "description": "Tutog Pinoy anytime — a minimalist YouTube music player.",
+  "description": "Tugtog Pinoy anytime — a minimalist YouTube music player.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#e4e8f4",
