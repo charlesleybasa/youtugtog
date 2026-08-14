@@ -13,6 +13,7 @@ import logoUrl from "./imports/ChatGPT_Image_Jul_30__2026__01_48_16_PM.png"
 import SavedPlaylistsModal, {
   type SavedPlaylist,
 } from "./components/SavedPlaylistsModal"
+import { pickNextShuffledId } from "./shuffle"
 
 /* --------------------------------------------------------------------- *
  * Youtugtog — "Tutog Pinoy anytime".
@@ -1626,6 +1627,9 @@ export default function App() {
   const searchTriggerRef = useRef<HTMLElement | null>(null)
   const playlistsTriggerRef = useRef<HTMLElement | null>(null)
   const toastSeq = useRef(0)
+  // Tracks selected during the current shuffle cycle. Keeping this separate
+  // from React state lets consecutive player events update it synchronously.
+  const shufflePlayedRef = useRef<Set<string>>(new Set())
 
   const currentIdx = currentId
     ? tracks.findIndex((candidate) => candidate.id === currentId)
@@ -1702,21 +1706,42 @@ export default function App() {
     stateRef.current = { tracks, currentId, repeat, shuffle }
   }, [tracks, currentId, repeat, shuffle])
 
+  // Turning shuffle on starts a fresh cycle from the current song. Turning it
+  // off discards the cycle so a later shuffle session does not inherit it.
+  useEffect(() => {
+    shufflePlayedRef.current.clear()
+    if (shuffle && currentId) shufflePlayedRef.current.add(currentId)
+  }, [shuffle])
+
   const advance = useCallback((delta: number) => {
     const { tracks: ts, currentId: cid, shuffle: sh } = stateRef.current
     if (!ts.length) return
     const idx = ts.findIndex((t) => t.id === cid)
     let nextIdx: number
+<<<<<<< HEAD
     if (idx < 0) {
       nextIdx = delta < 0 ? ts.length - 1 : 0
     } else if (sh && ts.length > 1) {
       do {
         nextIdx = Math.floor(Math.random() * ts.length)
       } while (nextIdx === idx)
+=======
+    if (sh && ts.length > 1) {
+      const nextId = pickNextShuffledId(
+        ts.map((item) => item.id),
+        cid,
+        shufflePlayedRef.current,
+      )
+      nextIdx = ts.findIndex((item) => item.id === nextId)
+>>>>>>> shuffle-songs-fix
     } else {
       nextIdx = (((idx + delta) % ts.length) + ts.length) % ts.length
     }
-    setCurrentId(ts[nextIdx].id)
+    const nextId = ts[nextIdx].id
+    // Keep player callbacks current even if another event arrives before the
+    // state-syncing effect runs.
+    stateRef.current = { ...stateRef.current, currentId: nextId }
+    setCurrentId(nextId)
     intendedPlayRef.current = true
     setPlaying(true)
   }, [])
