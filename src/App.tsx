@@ -10,6 +10,9 @@ import {
 } from "react"
 import { flushSync } from "react-dom"
 import logoUrl from "./imports/ChatGPT_Image_Jul_30__2026__01_48_16_PM.png"
+import SavedPlaylistsModal, {
+  type SavedPlaylist,
+} from "./components/SavedPlaylistsModal"
 
 /* --------------------------------------------------------------------- *
  * Youtugtog — "Tutog Pinoy anytime".
@@ -56,7 +59,8 @@ const STARTER: Track[] = [
 ]
 
 const SEARCH_PROXY = "/api/search"
-const STORE_KEY = "youtugtog:state:v1"
+const STORE_KEY = "youtugtog:state:v2"
+const LEGACY_STORE_KEY = "youtugtog:state:v1"
 
 /* ---- Small helpers -------------------------------------------------- */
 
@@ -122,7 +126,8 @@ const clamp = (n: number, min: number, max: number) =>
 
 type Persisted = {
   tracks?: Track[]
-  currentId?: string
+  currentId?: string | null
+  playlists?: SavedPlaylist[]
   volume?: number
   theme?: Theme
   /** Legacy pre-`theme` field, still read once so existing users keep their choice. */
@@ -141,7 +146,11 @@ const THEME_ORDER: Theme[] = ["system", "light", "dark"]
 
 /** Resolve the stored preference, migrating the old boolean if present. */
 function initialTheme(saved: Persisted): Theme {
-  if (saved.theme === "light" || saved.theme === "dark" || saved.theme === "system") {
+  if (
+    saved.theme === "light" ||
+    saved.theme === "dark" ||
+    saved.theme === "system"
+  ) {
     return saved.theme
   }
   if (typeof saved.dark === "boolean") return saved.dark ? "dark" : "light"
@@ -150,7 +159,8 @@ function initialTheme(saved: Persisted): Theme {
 
 function loadPersisted(): Persisted {
   try {
-    const raw = localStorage.getItem(STORE_KEY)
+    const raw =
+      localStorage.getItem(STORE_KEY) ?? localStorage.getItem(LEGACY_STORE_KEY)
     if (!raw) return {}
     const parsed = JSON.parse(raw) as Persisted
     return parsed && typeof parsed === "object" ? parsed : {}
@@ -159,7 +169,35 @@ function loadPersisted(): Persisted {
   }
 }
 
-const wakeSupported = typeof navigator !== "undefined" && "wakeLock" in navigator
+function loadSavedPlaylists(saved: Persisted): SavedPlaylist[] {
+  if (!Array.isArray(saved.playlists)) return []
+  return saved.playlists.filter(
+    (playlist) =>
+      playlist &&
+      typeof playlist.id === "string" &&
+      typeof playlist.name === "string" &&
+      typeof playlist.savedAt === "string" &&
+      Array.isArray(playlist.tracks) &&
+      playlist.tracks.every(
+        (track) =>
+          track &&
+          typeof track.id === "string" &&
+          typeof track.title === "string" &&
+          typeof track.artist === "string",
+      ),
+  )
+}
+
+function defaultPlaylistName(): string {
+  const date = new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+  }).format(new Date())
+  return `My mix · ${date}`
+}
+
+const wakeSupported =
+  typeof navigator !== "undefined" && "wakeLock" in navigator
 
 function prefersDark(): boolean {
   return (
@@ -541,6 +579,62 @@ const Icon = {
       <path d="M12 6.2v8.6a4.3 4.3 0 0 0 0-8.6Z" fill="currentColor" />
     </svg>
   ),
+  Library: (p: { size?: number }) => (
+    <svg
+      width={p.size ?? 18}
+      height={p.size ?? 18}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <rect
+        x="3"
+        y="4"
+        width="7"
+        height="16"
+        rx="2"
+        stroke="currentColor"
+        strokeWidth="1.9"
+      />
+      <rect
+        x="14"
+        y="4"
+        width="7"
+        height="16"
+        rx="2"
+        stroke="currentColor"
+        strokeWidth="1.9"
+      />
+      <path
+        d="M6 8h1M17 8h1M6 16h1M17 16h1"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+      />
+    </svg>
+  ),
+  Save: (p: { size?: number }) => (
+    <svg
+      width={p.size ?? 18}
+      height={p.size ?? 18}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M5 3.5h11l3 3V20a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M8 3.5v5h7v-5M8 21v-7h8v7"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinejoin="round"
+      />
+    </svg>
+  ),
   Check: (p: { size?: number }) => (
     <svg
       width={p.size ?? 16}
@@ -586,6 +680,7 @@ function IconButton({
   pressed,
   title,
   sizeClass,
+  /** Responsive sizing classes; when set, overrides the fixed `size` px. */
 }: {
   children: ReactNode
   onClick?: () => void
@@ -593,7 +688,6 @@ function IconButton({
   label: string
   pressed?: boolean
   title?: string
-  /** Responsive sizing classes; when set, overrides the fixed `size` px. */
   sizeClass?: string
 }) {
   return (
@@ -1033,6 +1127,7 @@ function SearchModal({
   onAdd,
   onPlay,
   inputRef,
+  /** Owned by App so the opener can focus it inside the click gesture. */
 }: {
   open: boolean
   onClose: () => void
@@ -1045,14 +1140,16 @@ function SearchModal({
   isQueued: (id: string) => boolean
   onAdd: (t: Track) => void
   onPlay: (t: Track) => void
-  /** Owned by App so the opener can focus it inside the click gesture. */
   inputRef: React.RefObject<HTMLInputElement | null>
 }) {
   const panelRef = useRef<HTMLDivElement | null>(null)
   // The bottom-sheet must track the *visual* viewport: iOS shrinks it when
   // the soft keyboard opens but leaves fixed/layout-viewport elements at
   // full height, which would leave the sheet stranded behind the keyboard.
-  const [viewport, setViewport] = useState<{ top: number; height: number } | null>(null)
+  const [viewport, setViewport] = useState<{
+    top: number
+    height: number
+  } | null>(null)
 
   useEffect(() => {
     if (!open) return
@@ -1476,19 +1573,29 @@ export default function App() {
   const [tracks, setTracks] = useState<Track[]>(
     Array.isArray(saved.tracks) ? saved.tracks : STARTER,
   )
+  const [savedPlaylists, setSavedPlaylists] = useState<SavedPlaylist[]>(() =>
+    loadSavedPlaylists(saved),
+  )
   const [query, setQuery] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
   const [searchResults, setSearchResults] = useState<Track[]>([])
   const [searchLoading, setSearchLoading] = useState(false)
   const [searchError, setSearchError] = useState("")
   const [searchOpen, setSearchOpen] = useState(false)
+  const [playlistsOpen, setPlaylistsOpen] = useState(false)
+  const [playlistsView, setPlaylistsView] = useState<"library" | "save">(
+    "library",
+  )
+  const [playlistDefaultName, setPlaylistDefaultName] =
+    useState(defaultPlaylistName)
   const [addValue, setAddValue] = useState("")
   const [addError, setAddError] = useState("")
-  const [currentId, setCurrentId] = useState<string>(
+  const [currentId, setCurrentId] = useState<string | null>(
     saved.currentId &&
       (saved.tracks ?? STARTER).some((t) => t.id === saved.currentId)
       ? saved.currentId
-      : (saved.tracks?.[0]?.id ?? STARTER[0].id),
+      : ((Array.isArray(saved.tracks) ? saved.tracks[0]?.id : STARTER[0].id) ??
+          null),
   )
   const [playing, setPlaying] = useState(false)
   const [buffering, setBuffering] = useState(false)
@@ -1517,13 +1624,13 @@ export default function App() {
   const intendedPlayRef = useRef(false)
   const wakeLockRef = useRef<any>(null)
   const searchTriggerRef = useRef<HTMLElement | null>(null)
+  const playlistsTriggerRef = useRef<HTMLElement | null>(null)
   const toastSeq = useRef(0)
 
-  const currentIdx = Math.max(
-    0,
-    tracks.findIndex((t) => t.id === currentId),
-  )
-  const track = tracks[currentIdx]
+  const currentIdx = currentId
+    ? tracks.findIndex((candidate) => candidate.id === currentId)
+    : -1
+  const track = currentIdx >= 0 ? tracks[currentIdx] : undefined
   const displayTime = scrubTime ?? time
   const progress = duration ? (displayTime / duration) * 100 : 0
 
@@ -1566,6 +1673,7 @@ export default function App() {
     const payload: Persisted = {
       tracks,
       currentId,
+      playlists: savedPlaylists,
       volume,
       theme,
       repeat,
@@ -1577,7 +1685,16 @@ export default function App() {
     } catch {
       /* storage full or blocked — playback is unaffected */
     }
-  }, [tracks, currentId, volume, theme, repeat, shuffle, keepAwake])
+  }, [
+    tracks,
+    currentId,
+    savedPlaylists,
+    volume,
+    theme,
+    repeat,
+    shuffle,
+    keepAwake,
+  ])
 
   /* live refs so the YT event handlers always see fresh state */
   const stateRef = useRef({ tracks, currentId, repeat, shuffle })
@@ -1590,7 +1707,9 @@ export default function App() {
     if (!ts.length) return
     const idx = ts.findIndex((t) => t.id === cid)
     let nextIdx: number
-    if (sh && ts.length > 1) {
+    if (idx < 0) {
+      nextIdx = delta < 0 ? ts.length - 1 : 0
+    } else if (sh && ts.length > 1) {
       do {
         nextIdx = Math.floor(Math.random() * ts.length)
       } while (nextIdx === idx)
@@ -1629,7 +1748,7 @@ export default function App() {
     loadYouTubeApi().then((YT) => {
       if (killed || !mountRef.current) return
       playerRef.current = new YT.Player(mountRef.current, {
-        videoId: currentId,
+        videoId: currentId ?? undefined,
         playerVars: {
           playsinline: 1,
           rel: 0,
@@ -1690,12 +1809,13 @@ export default function App() {
       p.cueVideoById(track.id)
       return
     }
-    p.loadVideoById(track.id)
+    if (intendedPlayRef.current) p.loadVideoById(track.id)
+    else p.cueVideoById(track.id)
     setTime(0)
     setScrubTime(null)
     setDuration(0)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentId, ready])
+  }, [track?.id, ready])
 
   useEffect(() => {
     const p = playerRef.current
@@ -1865,7 +1985,8 @@ export default function App() {
    * gesture. flushSync commits the modal to the DOM synchronously so the
    * input exists and can be focused before the tap handler returns. */
   const openSearch = useCallback(() => {
-    searchTriggerRef.current = document.activeElement as HTMLElement | null
+    searchTriggerRef.current = (document.activeElement as HTMLElement | null)
+    setPlaylistsOpen(false)
     flushSync(() => setSearchOpen(true))
     searchInputRef.current?.focus({ preventScroll: true })
   }, [])
@@ -1876,18 +1997,36 @@ export default function App() {
     if (trigger?.isConnected) requestAnimationFrame(() => trigger.focus?.())
   }, [])
 
+  const openPlaylists = useCallback(
+    (view: "library" | "save", preserveTrigger = false) => {
+      if (!preserveTrigger) {
+        playlistsTriggerRef.current = document.activeElement as HTMLElement | null
+      }
+      setSearchOpen(false)
+      setPlaylistDefaultName(defaultPlaylistName())
+      setPlaylistsView(view)
+      setPlaylistsOpen(true)
+    },
+    [],
+  )
+
+  const closePlaylists = useCallback(() => {
+    setPlaylistsOpen(false)
+    const trigger = playlistsTriggerRef.current
+    if (trigger?.isConnected) requestAnimationFrame(() => trigger.focus?.())
+  }, [])
+
   /* ---- global keyboard shortcuts ---- */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null
       if (
-        el &&
-        (el.tagName === "INPUT" ||
-          el.tagName === "TEXTAREA" ||
-          el.isContentEditable)
+        el?.closest(
+          'input, textarea, select, button, a, [contenteditable="true"], [role="dialog"]',
+        )
       )
         return
-      if (searchOpen) return
+      if (searchOpen || playlistsOpen) return
       if (e.key === " " || e.key === "k") {
         e.preventDefault()
         toggle()
@@ -1901,7 +2040,7 @@ export default function App() {
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [toggle, advance, searchOpen, openSearch])
+  }, [toggle, advance, searchOpen, playlistsOpen, openSearch])
 
   /* ---- queue operations ---- */
 
@@ -1920,10 +2059,19 @@ export default function App() {
     const index = tracks.findIndex((t) => t.id === id)
     const removed = tracks[index]
     if (!removed) return
+    const wasCurrent = id === currentId
     setTracks((prev) => {
       const next = prev.filter((t) => t.id !== id)
       if (id === currentId && next.length) {
         setCurrentId(next[Math.min(index, next.length - 1)].id)
+      } else if (id === currentId) {
+        intendedPlayRef.current = false
+        playerRef.current?.stopVideo?.()
+        setCurrentId(null)
+        setPlaying(false)
+        setTime(0)
+        setScrubTime(null)
+        setDuration(0)
       }
       return next
     })
@@ -1934,6 +2082,7 @@ export default function App() {
           if (prev.some((t) => t.id === removed.id)) return prev
           const next = [...prev]
           next.splice(Math.min(index, next.length), 0, removed)
+          if (wasCurrent) setCurrentId(removed.id)
           return next
         }),
     })
@@ -1955,26 +2104,40 @@ export default function App() {
   const resolveTrackMeta = useCallback(async (id: string) => {
     const meta = await fetchVideoMeta(id)
     if (!meta) {
-      setTracks((prev) =>
-        prev.map((t) =>
-          t.id === id && t.title === PENDING_TITLE
-            ? { ...t, artist: "Tap to play" }
-            : t,
-        ),
+      const markUnavailable = (track: Track) =>
+        track.id === id && track.title === PENDING_TITLE
+          ? { ...track, artist: "Tap to play" }
+          : track
+      setTracks((prev) => prev.map(markUnavailable))
+      setSavedPlaylists((prev) =>
+        prev.map((playlist) => ({
+          ...playlist,
+          tracks: playlist.tracks.map(markUnavailable),
+        })),
       )
       return
     }
-    setTracks((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, ...meta } : t)),
+    const applyMeta = (track: Track) =>
+      track.id === id ? { ...track, ...meta } : track
+    setTracks((prev) => prev.map(applyMeta))
+    setSavedPlaylists((prev) =>
+      prev.map((playlist) => ({
+        ...playlist,
+        tracks: playlist.tracks.map(applyMeta),
+      })),
     )
   }, [])
 
   // Backfill anything saved before its title resolved (offline at the time,
   // or added by an older build that never fetched metadata).
   useEffect(() => {
-    const pending = tracks
-      .filter((t) => t.title === PENDING_TITLE)
-      .map((t) => t.id)
+    const pending = [
+      ...new Set(
+        [...tracks, ...savedPlaylists.flatMap((playlist) => playlist.tracks)]
+          .filter((track) => track.title === PENDING_TITLE)
+          .map((track) => track.id),
+      ),
+    ]
     if (!pending.length) return
     let cancelled = false
     void (async () => {
@@ -2006,6 +2169,7 @@ export default function App() {
       ...prev,
       { id, title: PENDING_TITLE, artist: "Fetching details…" },
     ])
+    if (!tracks.length) setCurrentId(id)
     notify("Added to the end of your queue")
     void resolveTrackMeta(id)
   }
@@ -2013,6 +2177,7 @@ export default function App() {
   const addSearchResult = (result: Track) => {
     if (tracks.some((t) => t.id === result.id)) return
     setTracks((prev) => [...prev, result])
+    if (!tracks.length) setCurrentId(result.id)
     notify(`Queued “${result.title}”`)
   }
 
@@ -2023,6 +2188,99 @@ export default function App() {
     intendedPlayRef.current = true
     setPlaying(true)
     setSearchOpen(false)
+  }
+
+  const saveCurrentQueue = (name: string) => {
+    const trimmedName = name.trim()
+    if (!trimmedName || !tracks.length) return
+    const playlist: SavedPlaylist = {
+      id:
+        globalThis.crypto?.randomUUID?.() ??
+        `playlist-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      name: trimmedName,
+      tracks: tracks.map((item) => ({ ...item })),
+      savedAt: new Date().toISOString(),
+    }
+    setSavedPlaylists((prev) => [playlist, ...prev])
+    closePlaylists()
+    notify(`Saved “${trimmedName}”`, {
+      label: "View",
+      // Keep the durable Save queue opener as the focus-return target; the
+      // toast action unmounts as soon as it opens the modal.
+      run: () => openPlaylists("library", true),
+    })
+  }
+
+  const playSavedPlaylist = (playlist: SavedPlaylist) => {
+    const nextTracks = playlist.tracks.map((item) => ({ ...item }))
+    const first = nextTracks[0]
+    if (!first) return
+
+    const previousTracks = tracks.map((item) => ({ ...item }))
+    const previousCurrentId = currentId
+    const previousPlaying = playing
+
+    setTracks(nextTracks)
+    setQuery("")
+    setCurrentId(first.id)
+    intendedPlayRef.current = true
+    setPlaying(true)
+    if (first.id === currentId) playerRef.current?.loadVideoById?.(first.id)
+    closePlaylists()
+    notify(`Playing “${playlist.name}”`, {
+      label: "Undo",
+      run: () => {
+        setTracks(previousTracks)
+        setCurrentId(previousCurrentId)
+        intendedPlayRef.current = previousPlaying
+        setPlaying(previousPlaying)
+        const player = playerRef.current
+        if (!previousCurrentId) player?.stopVideo?.()
+        else if (previousCurrentId === first.id) {
+          // The track-id effect will not fire when both queues start with the
+          // same song, so restore the underlying player state explicitly.
+          if (previousPlaying) player?.playVideo?.()
+          else player?.pauseVideo?.()
+        }
+      },
+    })
+  }
+
+  const appendSavedPlaylist = (playlist: SavedPlaylist) => {
+    const queuedIds = new Set(tracks.map((item) => item.id))
+    const additions = playlist.tracks
+      .filter((item) => !queuedIds.has(item.id))
+      .map((item) => ({ ...item }))
+    if (!additions.length) {
+      notify("All songs are already in your queue")
+      return
+    }
+    setTracks((prev) => [...prev, ...additions])
+    if (!tracks.length) {
+      intendedPlayRef.current = false
+      setCurrentId(additions[0].id)
+      setPlaying(false)
+    }
+    notify(
+      `Added ${additions.length} ${
+        additions.length === 1 ? "song" : "songs"
+      } from “${playlist.name}”`,
+    )
+  }
+
+  const deleteSavedPlaylist = (playlist: SavedPlaylist) => {
+    const index = savedPlaylists.findIndex((item) => item.id === playlist.id)
+    setSavedPlaylists((prev) => prev.filter((item) => item.id !== playlist.id))
+    notify(`Deleted “${playlist.name}”`, {
+      label: "Undo",
+      run: () =>
+        setSavedPlaylists((prev) => {
+          if (prev.some((item) => item.id === playlist.id)) return prev
+          const next = [...prev]
+          next.splice(Math.max(0, index), 0, playlist)
+          return next
+        }),
+    })
   }
 
   const searchYouTube = useCallback(async () => {
@@ -2128,7 +2386,8 @@ export default function App() {
         ? "Repeat all"
         : "Repeat one"
 
-  const nextTheme = THEME_ORDER[(THEME_ORDER.indexOf(theme) + 1) % THEME_ORDER.length]
+  const nextTheme =
+    THEME_ORDER[(THEME_ORDER.indexOf(theme) + 1) % THEME_ORDER.length]
   const cycleTheme = () => {
     setTheme(nextTheme)
     notify(
@@ -2166,6 +2425,23 @@ export default function App() {
         <div className="flex shrink-0 items-center gap-2">
           <button
             type="button"
+            onClick={() => openPlaylists("library")}
+            className="neu-btn hidden cursor-pointer items-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold sm:flex"
+          >
+            <Icon.Library size={17} />
+            My playlists
+          </button>
+          <span className="sm:hidden">
+            <IconButton
+              label="My playlists"
+              onClick={() => openPlaylists("library")}
+              size={44}
+            >
+              <Icon.Library size={18} />
+            </IconButton>
+          </span>
+          <button
+            type="button"
             onClick={openSearch}
             className="accent-btn hidden cursor-pointer items-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold sm:flex"
           >
@@ -2173,11 +2449,7 @@ export default function App() {
             Search YouTube
           </button>
           <span className="sm:hidden">
-            <IconButton
-              label="Search YouTube"
-              onClick={openSearch}
-              size={46}
-            >
+            <IconButton label="Search YouTube" onClick={openSearch} size={46}>
               <Icon.Search size={19} />
             </IconButton>
           </span>
@@ -2428,19 +2700,30 @@ export default function App() {
           aria-label="Queue"
           className="neu min-w-0 rounded-[1.75rem] p-5 sm:rounded-[2rem] sm:p-6"
         >
-          <div className="flex items-baseline justify-between gap-3">
-            <h2
-              className="font-display text-base font-extrabold sm:text-lg"
-              style={{ color: "var(--text-strong)" }}
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h2
+                className="font-display text-base font-extrabold sm:text-lg"
+                style={{ color: "var(--text-strong)" }}
+              >
+                Your queue
+              </h2>
+              <p
+                className="mt-0.5 text-[0.7rem] font-semibold tabular-nums"
+                style={{ color: "var(--text-muted)" }}
+              >
+                {tracks.length} {tracks.length === 1 ? "song" : "songs"}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => openPlaylists("save")}
+              disabled={tracks.length === 0}
+              className="neu-btn flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2.5 text-xs font-bold"
             >
-              Your queue
-            </h2>
-            <p
-              className="text-[0.7rem] font-semibold tabular-nums"
-              style={{ color: "var(--text-muted)" }}
-            >
-              {tracks.length} {tracks.length === 1 ? "song" : "songs"}
-            </p>
+              <Icon.Save size={16} />
+              Save queue
+            </button>
           </div>
 
           {/* Add by link */}
@@ -2602,6 +2885,20 @@ export default function App() {
         onAdd={addSearchResult}
         onPlay={playSearchResult}
         inputRef={searchInputRef}
+      />
+
+      <SavedPlaylistsModal
+        open={playlistsOpen}
+        view={playlistsView}
+        onViewChange={setPlaylistsView}
+        onClose={closePlaylists}
+        playlists={savedPlaylists}
+        currentTracks={tracks}
+        defaultName={playlistDefaultName}
+        onSave={saveCurrentQueue}
+        onPlay={playSavedPlaylist}
+        onAppend={appendSavedPlaylist}
+        onDelete={deleteSavedPlaylist}
       />
 
       <Toast toast={toast} onDismiss={() => setToast(null)} />
