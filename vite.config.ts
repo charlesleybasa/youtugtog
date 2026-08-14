@@ -50,6 +50,27 @@ export default defineConfig(({ mode }) => {
       port: process.env.PORT ? parseInt(process.env.PORT, 10) : 0,
       strictPort: !!process.env.PORT,
       watch: { ignored: ['**/.figma/**'] },
+      // `vite dev` has no serverless runtime, so /api/* (Vercel functions)
+      // would 404 locally. Lyrics need no API key, so proxy them straight to
+      // LRCLIB in dev — the browser cannot call it directly (no CORS).
+      // In production the real api/lyrics.ts function handles this path.
+      proxy: {
+        '/api/lyrics': {
+          target: 'https://lrclib.net',
+          changeOrigin: true,
+          rewrite: (requestPath: string) => {
+            const query = new URLSearchParams(requestPath.split('?')[1] ?? '')
+            const upstream = new URLSearchParams()
+            upstream.set('track_name', query.get('track') ?? '')
+            upstream.set('artist_name', query.get('artist') ?? '')
+            const album = query.get('album')
+            if (album) upstream.set('album_name', album)
+            const duration = query.get('duration')
+            if (duration) upstream.set('duration', duration)
+            return `/api/get?${upstream.toString()}`
+          },
+        },
+      },
     },
     preview: {
       host: '0.0.0.0',
