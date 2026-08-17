@@ -2999,14 +2999,19 @@ export default function App() {
         </div>
       </header>
 
-      <main className="mx-auto mt-6 grid max-w-6xl gap-5 sm:mt-8 sm:gap-6 lg:grid-cols-[minmax(0,400px)_minmax(0,1fr)] lg:gap-8">
+      {/* Two panes from `fold` (600px) rather than `lg`: that is Android's
+          "medium" window class, and an unfolded foldable sits inside it. The
+          player column is narrower there than at `lg` so the queue still gets
+          usable width on a ~750px screen. `.app-main` is the hook for the
+          posture rules in index.css. */}
+      <main className="app-main mx-auto mt-6 grid max-w-6xl gap-5 sm:mt-8 sm:gap-6 fold:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] fold:gap-6 lg:grid-cols-[minmax(0,400px)_minmax(0,1fr)] lg:gap-8">
         {/* Now playing ------------------------------------------------ */}
         <section
           ref={playerCardRef}
           aria-label="Player"
           /* min-w-0: grid items default to min-width:auto, which lets long
              track titles push the card wider than the viewport. */
-          className="neu min-w-0 rounded-[1.75rem] p-4 min-[360px]:p-5 sm:rounded-[2rem] sm:p-6 lg:sticky lg:top-6 lg:self-start"
+          className="app-player neu min-w-0 rounded-[1.75rem] p-4 min-[360px]:p-5 sm:rounded-[2rem] sm:p-6 fold:sticky fold:top-6 fold:self-start"
         >
           <div className="flex items-center justify-between gap-2">
             <p

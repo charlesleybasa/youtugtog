@@ -1,6 +1,17 @@
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 @import 'tailwindcss';
 
+/* `fold` matches Android's "medium" window size class (>= 600dp), the point
+   at which Google's large-screen guidance says to switch a list-detail UI to
+   two panes. It is deliberately below Tailwind's `sm` (640px): an unfolded
+   Galaxy Z Fold lands around 700-760px wide, so gating the two-pane layout on
+   `lg` (1024px) meant the inner screen never reached it and showed a stretched
+   phone layout instead. The cover screen (~385px) stays below this and keeps
+   the single-column layout, which is correct for its width. */
+@theme {
+  --breakpoint-fold: 600px;
+}
+
 /* =====================================================================
  * Youtugtog — Soft UI Evolution
  * Neumorphism kept, but with WCAG-AA text contrast and real focus states.
@@ -58,10 +69,13 @@
   color-scheme: light;
 }
 
-/* Single-column tablet: the card is wide, so the disc should carry it. */
-@media (min-width: 640px) and (max-width: 1023px) {
+/* From `fold` up the player shares the width with the queue instead of owning
+   it, so the disc has to fit a column rather than the viewport. The old rule
+   here sized it for a full-width card (42vw) and would overflow the left pane
+   on an unfolded foldable. */
+@media (min-width: 600px) {
   :root {
-    --disc: clamp(260px, 42vw, 340px);
+    --disc: clamp(170px, 28vw, 280px);
   }
 }
 
@@ -965,6 +979,52 @@ button {
   textarea,
   select {
     font-size: 16px !important;
+  }
+}
+
+/* =====================================================================
+ * Foldable postures
+ *
+ * A fully unfolded Galaxy Z Fold is one continuous display, so the width
+ * breakpoint above is all it needs. These two rules handle the cases where
+ * the OS reports the window as split into segments, which a width query
+ * cannot detect:
+ *
+ *   - horizontal segments: a hinge running vertically between two panes
+ *     (dual-screen devices, and book posture on some foldables). Sizing the
+ *     columns to the reported segments keeps the hinge in the gutter instead
+ *     of down the middle of the artwork or the queue list.
+ *   - vertical segments: tabletop posture, screen folded flat like a laptop.
+ *     Two columns would put half of each pane on a surface facing away from
+ *     the user, so stack instead and keep the player in the upper segment.
+ *
+ * Both degrade silently: browsers without viewport-segment support simply
+ * never match, leaving the width-based layout in charge.
+ * ===================================================================== */
+
+@media (horizontal-viewport-segments: 2) {
+  .app-main {
+    max-width: none;
+    grid-template-columns:
+      env(viewport-segment-width 0 0)
+      env(viewport-segment-width 1 0);
+    column-gap: calc(
+      env(viewport-segment-left 1 0) - env(viewport-segment-right 0 0)
+    );
+  }
+}
+
+@media (vertical-viewport-segments: 2) {
+  .app-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Sticky positioning fights the fold here: the player would slide under the
+     hinge as the queue scrolls. Pin it to the top segment instead. */
+  .app-player {
+    position: static;
+    max-height: env(viewport-segment-height 0 0);
+    overflow-y: auto;
   }
 }
 
