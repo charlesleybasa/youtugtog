@@ -18,8 +18,12 @@ android {
         applicationId "com.youtugtog.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
+        // Play rejects any upload whose versionCode is not strictly higher than
+        // the last one it accepted — including uploads that were rejected in
+        // review — so this has to be bumped for every submission after the
+        // first. versionName is the string users see and is not checked.
         versionCode 1
-        versionName "1.0"
+        versionName "1.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
