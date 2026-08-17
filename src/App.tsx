@@ -15,7 +15,6 @@ import SavedPlaylistsModal, {
 } from "./components/SavedPlaylistsModal"
 import { pickNextShuffledId } from "./shuffle"
 import { apiUrl } from "./api"
-import { startBackgroundAudio, stopBackgroundAudio } from "./backgroundAudio"
 
 /* --------------------------------------------------------------------- *
  * Youtugtog — "Tugtog Pinoy anytime".
@@ -2420,17 +2419,6 @@ export default function App() {
   }, [keepAwake, playing, acquireWakeLock, releaseWakeLock])
 
   useEffect(() => releaseWakeLock, [releaseWakeLock])
-
-  // On Android, hold a foreground service while playing so the process is not
-  // frozen once the app is backgrounded. No-op on the web.
-  useEffect(() => {
-    if (playing) void startBackgroundAudio()
-    else void stopBackgroundAudio()
-  }, [playing])
-
-  // Release it on unmount too — without this, closing the app mid-song would
-  // leave the service and its notification running with no player behind it.
-  useEffect(() => () => void stopBackgroundAudio(), [])
 
   useEffect(() => {
     const onVisible = () => {

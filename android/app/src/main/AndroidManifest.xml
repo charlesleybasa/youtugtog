@@ -20,12 +20,6 @@
             </intent-filter>
         </activity>
 
-        <service
-            android:name=".PlaybackService"
-            android:exported="false"
-            android:foregroundServiceType="mediaPlayback"
-        />
-
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -37,14 +31,8 @@
 
     <!-- Permissions -->
 
+    <!-- INTERNET is the only permission this build needs. Requesting nothing
+         else keeps the Play data-safety declaration simple and gives review
+         nothing to question. -->
     <uses-permission android:name="android.permission.INTERNET" />
-
-    <!-- Background playback. FOREGROUND_SERVICE_MEDIA_PLAYBACK is required from
-         Android 14 (API 34) on top of FOREGROUND_SERVICE, and must match the
-         android:foregroundServiceType on the service above or startForeground
-         throws. POST_NOTIFICATIONS is runtime-requested on Android 13+; without
-         it the service still runs, the user just never sees its notification. -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 </manifest>
