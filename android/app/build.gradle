@@ -1,5 +1,16 @@
 apply plugin: 'com.android.application'
 
+// Release signing is read from keystore.properties, which is gitignored: the
+// upload key and its passwords must never be committed. Without that file the
+// release signingConfig is simply not created, so debug builds still work on a
+// fresh clone and only `assembleRelease`/`bundleRelease` need the secrets.
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+def keystoreProperties = new Properties()
+def hasKeystore = keystorePropertiesFile.exists()
+if (hasKeystore) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
 android {
     namespace = "com.youtugtog.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -16,8 +27,25 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (hasKeystore) {
+            release {
+                storeFile rootProject.file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
+            if (hasKeystore) {
+                signingConfig signingConfigs.release
+            }
+            // Left off deliberately. The app is a WebView shell whose logic
+            // ships as already-minified JS in assets/; there is almost no Java
+            // to shrink, and enabling R8 would mean writing keep rules for the
+            // Capacitor plugin classes it resolves reflectively.
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
