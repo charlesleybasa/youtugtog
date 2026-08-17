@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { applyCors } from './_cors'
 
 /* --------------------------------------------------------------------- *
  * Lyrics proxy — LRCLIB (https://lrclib.net)
@@ -16,6 +17,8 @@ const UA = 'Youtugtog (https://youtugtog.vercel.app)'
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v)
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (applyCors(req, res)) return
+
   if (req.method !== 'GET') {
     res.setHeader('Allow', 'GET')
     return res.status(405).json({ error: 'Method not allowed' })
