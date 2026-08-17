@@ -14,6 +14,8 @@ import SavedPlaylistsModal, {
   type SavedPlaylist,
 } from "./components/SavedPlaylistsModal"
 import { pickNextShuffledId } from "./shuffle"
+import { apiUrl } from "./api"
+import { startBackgroundAudio, stopBackgroundAudio } from "./backgroundAudio"
 
 /* --------------------------------------------------------------------- *
  * Youtugtog — "Tugtog Pinoy anytime".
@@ -60,7 +62,7 @@ const STARTER: Track[] = [
   { id: "YQHsXMglC9A", title: "Hello", artist: "Adele" },
 ]
 
-const SEARCH_PROXY = "/api/search"
+const SEARCH_PROXY = apiUrl("/api/search")
 const STORE_KEY = "youtugtog:state:v2"
 const LEGACY_STORE_KEY = "youtugtog:state:v1"
 
@@ -264,7 +266,7 @@ export async function fetchSyncedLyrics({
   const name = trackName.trim()
   if (!name) return { kind: "none" }
 
-  const url = new URL("/api/lyrics", window.location.origin)
+  const url = new URL(apiUrl("/api/lyrics"))
   url.searchParams.set("track", name)
   if (artistName?.trim()) url.searchParams.set("artist", artistName.trim())
   if (albumName?.trim()) url.searchParams.set("album", albumName.trim())
@@ -2418,6 +2420,17 @@ export default function App() {
   }, [keepAwake, playing, acquireWakeLock, releaseWakeLock])
 
   useEffect(() => releaseWakeLock, [releaseWakeLock])
+
+  // On Android, hold a foreground service while playing so the process is not
+  // frozen once the app is backgrounded. No-op on the web.
+  useEffect(() => {
+    if (playing) void startBackgroundAudio()
+    else void stopBackgroundAudio()
+  }, [playing])
+
+  // Release it on unmount too — without this, closing the app mid-song would
+  // leave the service and its notification running with no player behind it.
+  useEffect(() => () => void stopBackgroundAudio(), [])
 
   useEffect(() => {
     const onVisible = () => {
