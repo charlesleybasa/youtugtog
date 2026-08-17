@@ -10,7 +10,7 @@ import path from 'node:path'
 // to an empty configuration instead of failing the build on a hard import.
 function loadSiteConfiguration(): FigmaSiteConfiguration {
   try {
-    const raw = readFileSync(path.resolve(__dirname, './.figma/make/site.json'), 'utf8')
+    const raw = readFileSync(path.resolve(import.meta.dirname, './.figma/make/site.json'), 'utf8')
     return JSON.parse(raw) as FigmaSiteConfiguration
   } catch {
     return {}
@@ -23,11 +23,26 @@ const siteConfiguration = loadSiteConfiguration()
 export default defineConfig(({ mode }) => {
   // .figma/make/deploy-preview passes `--mode development` for cached-preview builds.
   const emitSourcemaps = mode === 'development'
+  // `npm run build:capacitor` passes `--mode capacitor`, which additionally
+  // loads .env.capacitor (where VITE_API_BASE_URL lives) on top of .env.
+  const isCapacitorBuild = mode === 'capacitor'
   const env = loadEnv(mode, process.cwd(), '')
 
   return {
-    base: process.env.FIGMA_PUBLIC_URL ? `${process.env.FIGMA_PUBLIC_URL}/` : '/',
+    // Capacitor serves the bundle from the root of the WebView's own local
+    // server, so asset URLs have to stay root-relative. FIGMA_PUBLIC_URL
+    // rewrites them to an absolute remote host, which would leave the
+    // shipped APK loading its own JS/CSS over the network — broken offline,
+    // and slow even when online.
+    base:
+      !isCapacitorBuild && process.env.FIGMA_PUBLIC_URL
+        ? `${process.env.FIGMA_PUBLIC_URL}/`
+        : '/',
     build: {
+      // Vite's default, stated explicitly because capacitor.config.ts
+      // `webDir` must match it — a silent change here would make
+      // `npx cap sync` copy a stale or empty directory into the APK.
+      outDir: 'dist',
       sourcemap: emitSourcemaps ? 'inline' : false,
       minify: !emitSourcemaps,
     },
@@ -42,7 +57,7 @@ export default defineConfig(({ mode }) => {
     ],
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, './src'),
+        '@': path.resolve(import.meta.dirname, './src'),
       },
     },
     server: {

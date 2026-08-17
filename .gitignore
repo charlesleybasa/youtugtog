@@ -3,4 +3,12 @@ dist
 .DS_Store
 *.local
 .env
+# `.env` alone does not match `.env.capacitor`; ignore every env file and
+# re-admit the checked-in templates.
+.env.*
+!.env.example
+!.env.capacitor.example
 .vercel
+
+# JetBrains / Android Studio
+.idea/
