@@ -1,5 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { applyCors } from './_cors'
+// See the note in search.ts: "type": "module" makes these ESM, so the
+// relative import needs an explicit extension or the function crashes at
+// invocation with ERR_MODULE_NOT_FOUND.
+import { applyCors } from './_cors.js'
 
 /* --------------------------------------------------------------------- *
  * Lyrics proxy — LRCLIB (https://lrclib.net)

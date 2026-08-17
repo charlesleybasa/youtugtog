@@ -1,5 +1,10 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { applyCors } from './_cors'
+// package.json sets "type": "module", so these functions run as ESM on
+// Vercel and Node requires an explicit file extension on relative imports.
+// The extensionless form resolves fine at build time but throws
+// ERR_MODULE_NOT_FOUND at invocation. TypeScript maps the .js specifier back
+// to _cors.ts, so this is correct for both.
+import { applyCors } from './_cors.js'
 
 const API_KEY = process.env.YOUTUBE_API_KEY
 
