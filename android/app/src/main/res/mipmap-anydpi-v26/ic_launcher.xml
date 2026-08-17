@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The background layer deliberately has no inset. Android composites adaptive
+  icons on a 108dp canvas and masks it to a launcher-chosen shape; only the
+  background is expected to bleed to the edges, and insetting it the way the
+  asset generator does leaves transparent corners on launchers that reveal
+  more than the nominal 72dp (parallax and scaling effects do exactly that).
+
+  The foreground keeps its 16.7% inset, which is what maps the artwork onto
+  the region that survives masking.
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@mipmap/ic_launcher_background" />
+    <foreground>
+        <inset android:drawable="@mipmap/ic_launcher_foreground" android:inset="16.7%" />
+    </foreground>
+</adaptive-icon>
