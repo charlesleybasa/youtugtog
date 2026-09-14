@@ -1064,3 +1064,34 @@ button {
     transform: none !important;
   }
 }
+
+/* =====================================================================
+ * Scroll-Driven Animations: Blur Player behind Queue on Mobile
+ * ===================================================================== */
+@supports (animation-timeline: scroll()) and (animation-range: 0% 100%) {
+  @media (max-width: 599px) {
+    @keyframes blur-player {
+      to {
+        filter: blur(8px);
+      }
+    }
+    
+    @keyframes fade-backdrop {
+      to {
+        opacity: 1;
+      }
+    }
+    
+    .app-player {
+      animation: blur-player linear both;
+      animation-timeline: scroll(root block);
+      animation-range: 0px 300px;
+    }
+    
+    .mobile-backdrop {
+      animation: fade-backdrop linear both;
+      animation-timeline: scroll(root block);
+      animation-range: 0px 300px;
+    }
+  }
+}

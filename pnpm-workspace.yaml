@@ -5,3 +5,6 @@
 # the /api functions, so allow it explicitly.
 allowBuilds:
   esbuild: true
+
+packages:
+  - "."

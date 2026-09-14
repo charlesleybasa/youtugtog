@@ -12,3 +12,4 @@ dist
 
 # JetBrains / Android Studio
 .idea/
+.env*

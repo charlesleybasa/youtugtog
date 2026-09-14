@@ -9,6 +9,89 @@ export type SavedPlaylist = {
   savedAt: string
 }
 
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from "@dnd-kit/core"
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
+
+function SortableTrackItem({
+  track,
+  onRemove,
+}: {
+  track: Track
+  onRemove: (id: string) => void
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: track.id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 10 : 1,
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-center gap-3 rounded-[1.25rem] p-2 transition-all ${
+        isDragging
+          ? "neu shadow-lg ring-1 ring-slate-200/50"
+          : "neu-inset hover:shadow-inner"
+      }`}
+    >
+      <button
+        type="button"
+        className="touch-none text-slate-400 hover:text-slate-600 grid h-8 w-8 place-items-center cursor-grab active:cursor-grabbing shrink-0"
+        {...attributes}
+        {...listeners}
+      >
+        <ModalIcon.Drag />
+      </button>
+      <img
+        src={thumbnail(track.id)}
+        alt=""
+        className="h-10 w-10 shrink-0 rounded-lg object-cover"
+        draggable={false}
+      />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold" style={{ color: "var(--text-strong)" }}>
+          {track.title}
+        </p>
+        <p className="truncate text-xs font-medium" style={{ color: "var(--text-muted)" }}>
+          {track.artist}
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={() => onRemove(track.id)}
+        className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-slate-400 hover:text-red-500 transition-colors"
+      >
+        <ModalIcon.Trash />
+      </button>
+    </div>
+  )
+}
+
 type View = "library" | "save"
 
 const thumbnail = (id: string) => `https://i.ytimg.com/vi/${id}/mqdefault.jpg`
@@ -45,6 +128,28 @@ const ModalIcon = {
         strokeWidth="2"
         strokeLinecap="round"
       />
+    </svg>
+  ),
+  Edit: () => (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M16.474 5.408l2.118 2.117m-.756-3.982L12.109 9.27a2.118 2.118 0 00-.58 1.082L11 13l2.648-.53c.41-.082.786-.283 1.082-.579l5.727-5.727a2.995 2.995 0 00-4.234-4.234zM19 19H5"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  ),
+  Drag: () => (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M8 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM16 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM16 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM16 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0z"/>
     </svg>
   ),
   Library: () => (
@@ -208,6 +313,7 @@ export default function SavedPlaylistsModal({
   onPlay,
   onAppend,
   onDelete,
+  onUpdate,
 }: {
   open: boolean
   view: View
@@ -220,11 +326,47 @@ export default function SavedPlaylistsModal({
   onPlay: (playlist: SavedPlaylist) => void
   onAppend: (playlist: SavedPlaylist) => void
   onDelete: (playlist: SavedPlaylist) => void
+  onUpdate?: (playlist: SavedPlaylist) => void
 }) {
   const panelRef = useRef<HTMLDivElement | null>(null)
   const nameRef = useRef<HTMLInputElement | null>(null)
   const [name, setName] = useState(defaultName)
   const [pendingPlayId, setPendingPlayId] = useState<string | null>(null)
+  const [editingPlaylistId, setEditingPlaylistId] = useState<string | null>(null)
+  const [editName, setEditName] = useState("")
+  const [editTracks, setEditTracks] = useState<Track[]>([])
+
+  const editingPlaylist = playlists.find(p => p.id === editingPlaylistId)
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  )
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    if (over && active.id !== over.id) {
+      setEditTracks((items) => {
+        const oldIndex = items.findIndex((i) => i.id === active.id)
+        const newIndex = items.findIndex((i) => i.id === over.id)
+        return arrayMove(items, oldIndex, newIndex)
+      })
+    }
+  }
+
+  const handleSaveEdit = () => {
+    if (editingPlaylist && onUpdate) {
+      onUpdate({
+        ...editingPlaylist,
+        name: editName.trim() || editingPlaylist.name,
+        tracks: editTracks,
+      })
+    }
+    setEditingPlaylistId(null)
+  }
+
   const [viewport, setViewport] = useState<{
     top: number
     height: number
@@ -324,12 +466,16 @@ export default function SavedPlaylistsModal({
         className="modal-panel neu safe-b relative z-10 flex max-h-full w-full max-w-2xl flex-col rounded-[1.75rem] p-4 sm:rounded-[2rem] sm:p-6"
       >
         <div className="flex items-start justify-between gap-3">
+          
           <div className="flex min-w-0 items-start gap-2.5">
-            {view === "save" && (
+            {(view === "save" || editingPlaylistId) && (
               <button
                 type="button"
-                onClick={() => onViewChange("library")}
-                aria-label="Back to My playlists"
+                onClick={() => {
+                  if (editingPlaylistId) setEditingPlaylistId(null)
+                  else onViewChange("library")
+                }}
+                aria-label="Back"
                 className="neu-btn grid h-11 w-11 shrink-0 place-items-center rounded-full"
               >
                 <ModalIcon.Back />
@@ -341,18 +487,21 @@ export default function SavedPlaylistsModal({
                 className="font-display text-[0.68rem] font-bold uppercase tracking-[0.3em]"
                 style={{ color: "var(--text-muted)" }}
               >
-                {view === "save" ? "Save this queue" : "My playlists"}
+                {editingPlaylistId ? "Edit Playlist" : view === "save" ? "Save this queue" : "My playlists"}
               </p>
               <p
                 className="mt-1 text-xs leading-relaxed"
                 style={{ color: "var(--text-muted)" }}
               >
-                {view === "save"
+                {editingPlaylistId 
+                  ? "Organize your tracks."
+                  : view === "save"
                   ? "Keep this exact order for another listening session."
                   : "Your mixes are saved privately on this device."}
               </p>
             </div>
           </div>
+
           <button
             type="button"
             onClick={onClose}
@@ -363,7 +512,70 @@ export default function SavedPlaylistsModal({
           </button>
         </div>
 
-        {view === "save" ? (
+        
+        {editingPlaylistId && editingPlaylist ? (
+          <div className="mt-5 flex min-h-0 flex-col flex-1">
+            <label className="block px-1 text-xs font-bold" style={{ color: "var(--text-strong)" }}>
+              Playlist name
+            </label>
+            <div className="neu-inset mt-2 flex items-center gap-3 rounded-2xl px-4 py-3 transition-all focus-within:ring-2 focus-within:ring-slate-300/50">
+              <span className="text-slate-400">
+                <ModalIcon.Edit />
+              </span>
+              <input
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                className="w-full min-w-0 bg-transparent text-sm font-semibold outline-none"
+                style={{ color: "var(--text-strong)" }}
+              />
+            </div>
+
+            <label className="mt-5 block px-1 text-xs font-bold" style={{ color: "var(--text-strong)" }}>
+              Tracks ({editTracks.length})
+            </label>
+            <div className="soft-scroll mt-2 min-h-0 flex-1 overflow-y-auto space-y-2 pb-2 pr-1">
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
+              >
+                <SortableContext
+                  items={editTracks}
+                  strategy={verticalListSortingStrategy}
+                >
+                  {editTracks.map((track) => (
+                    <SortableTrackItem
+                      key={track.id}
+                      track={track}
+                      onRemove={(id) =>
+                        setEditTracks(editTracks.filter((t) => t.id !== id))
+                      }
+                    />
+                  ))}
+                </SortableContext>
+              </DndContext>
+            </div>
+
+            <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end shrink-0 pt-2 border-t border-slate-200/50">
+              <button
+                type="button"
+                onClick={() => setEditingPlaylistId(null)}
+                className="neu-btn rounded-xl px-5 py-3 text-sm font-bold"
+                style={{ color: "var(--text-strong)" }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveEdit}
+                className="accent-btn flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-bold"
+              >
+                <ModalIcon.Save />
+                Save Changes
+              </button>
+            </div>
+          </div>
+        ) : view === "save" ? (
           <form
             className="mt-5 min-h-0"
             onSubmit={(event) => {
@@ -512,7 +724,7 @@ export default function SavedPlaylistsModal({
                         <ModalIcon.Trash />
                       </button>
                     </div>
-                    <div className="mt-3 grid grid-cols-2 gap-2 sm:ml-[5.5rem] sm:flex">
+                    <div className="mt-3 grid grid-cols-3 gap-2 sm:ml-[5.5rem] sm:flex">
                       <button
                         type="button"
                         onClick={() => {
@@ -524,6 +736,18 @@ export default function SavedPlaylistsModal({
                       >
                         <ModalIcon.Play />
                         Play now
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingPlaylistId(playlist.id)
+                          setEditName(playlist.name)
+                          setEditTracks(playlist.tracks)
+                        }}
+                        className="neu-btn flex items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-[0.72rem] font-bold"
+                      >
+                        <ModalIcon.Edit />
+                        Edit
                       </button>
                       <button
                         type="button"

@@ -2065,6 +2065,7 @@ export default function App() {
   const mountRef = useRef<HTMLDivElement | null>(null)
   const transportRef = useRef<HTMLDivElement | null>(null)
   const playerCardRef = useRef<HTMLElement | null>(null)
+  const backdropRef = useRef<HTMLDivElement | null>(null)
   const tick = useRef<number | null>(null)
   const searchInputRef = useRef<HTMLInputElement | null>(null)
   // What the *user* asked for. `playing` mirrors the YouTube player, which a
@@ -2798,6 +2799,12 @@ export default function App() {
     })
   }
 
+  const updateSavedPlaylist = (playlist: SavedPlaylist) => {
+    setSavedPlaylists((prev) =>
+      prev.map((item) => (item.id === playlist.id ? playlist : item)),
+    )
+  }
+
   const searchYouTube = useCallback(async () => {
     const q = searchQuery.trim()
     if (!q) return
@@ -2858,6 +2865,44 @@ export default function App() {
   useEffect(() => {
     dragIdRef.current = dragId
   }, [dragId])
+
+  /* ---- scroll blur fallback for mobile ---- */
+  useEffect(() => {
+    if (
+      typeof CSS !== "undefined" &&
+      !CSS.supports("(animation-timeline: scroll()) and (animation-range: 0% 100%)")
+    ) {
+      const handleScroll = () => {
+        if (window.innerWidth >= 600) {
+          if (playerCardRef.current) {
+            playerCardRef.current.style.filter = ""
+          }
+          if (backdropRef.current) {
+            backdropRef.current.style.opacity = "0"
+          }
+          return
+        }
+
+        const scrollY = window.scrollY
+        const maxScroll = 300
+        const progress = Math.min(1, Math.max(0, scrollY / maxScroll))
+
+        if (playerCardRef.current) {
+          playerCardRef.current.style.filter = `blur(${progress * 8}px)`
+        }
+        if (backdropRef.current) {
+          backdropRef.current.style.opacity = `${progress}`
+        }
+      }
+
+      window.addEventListener("scroll", handleScroll, { passive: true })
+      window.addEventListener("resize", handleScroll, { passive: true })
+      return () => {
+        window.removeEventListener("scroll", handleScroll)
+        window.removeEventListener("resize", handleScroll)
+      }
+    }
+  }, [])
 
   const reorderTo = useCallback((targetId: string) => {
     setTracks((prev) => {
@@ -2987,6 +3032,13 @@ export default function App() {
         </div>
       </header>
 
+      {/* Mobile backdrop for Queue modal effect */}
+      <div
+        ref={backdropRef}
+        aria-hidden="true"
+        className="mobile-backdrop pointer-events-none fixed inset-0 z-[5] bg-[rgba(0,0,0,0.6)] opacity-0 fold:hidden"
+      />
+
       {/* Two panes from `fold` (600px) rather than `lg`: that is Android's
           "medium" window class, and an unfolded foldable sits inside it. The
           player column is narrower there than at `lg` so the queue still gets
@@ -2999,7 +3051,7 @@ export default function App() {
           aria-label="Player"
           /* min-w-0: grid items default to min-width:auto, which lets long
              track titles push the card wider than the viewport. */
-          className="app-player neu min-w-0 rounded-[1.75rem] p-4 min-[360px]:p-5 sm:rounded-[2rem] sm:p-6 fold:sticky fold:top-6 fold:self-start"
+          className="app-player neu min-w-0 rounded-[1.75rem] p-4 min-[360px]:p-5 sm:rounded-[2rem] sm:p-6 sticky top-5 sm:top-6 fold:top-6 fold:self-start z-0"
         >
           <div className="flex items-center justify-between gap-2">
             <p
@@ -3234,7 +3286,7 @@ export default function App() {
         {/* Queue ------------------------------------------------------ */}
         <section
           aria-label="Queue"
-          className="neu min-w-0 rounded-[1.75rem] p-5 sm:rounded-[2rem] sm:p-6"
+          className="neu min-w-0 min-h-[80vh] rounded-[1.75rem] shadow-2xl p-5 sm:rounded-[2rem] sm:p-6 relative z-10 fold:min-h-0 fold:shadow-none"
         >
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
@@ -3435,6 +3487,7 @@ export default function App() {
         onPlay={playSavedPlaylist}
         onAppend={appendSavedPlaylist}
         onDelete={deleteSavedPlaylist}
+        onUpdate={updateSavedPlaylist}
       />
 
       <Toast toast={toast} onDismiss={() => setToast(null)} />
