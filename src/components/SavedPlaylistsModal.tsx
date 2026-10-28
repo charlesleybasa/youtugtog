@@ -1,3 +1,4 @@
+import PlaylistSongPicker from "./PlaylistSongPicker"
 import { useEffect, useRef, useState } from "react"
 
 type Track = { id: string; title: string; artist: string }
@@ -7,6 +8,91 @@ export type SavedPlaylist = {
   name: string
   tracks: Track[]
   savedAt: string
+}
+
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core"
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
+
+function SortableTrackItem({
+  track,
+  onRemove,
+}: {
+  track: Track
+  onRemove: (id: string) => void
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: track.id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 10 : 1,
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-center gap-3 rounded-[1.25rem] p-2 transition-all ${
+        isDragging
+          ? "neu shadow-lg ring-1 ring-slate-200/50"
+          : "neu-inset hover:shadow-inner"
+      }`}
+    >
+      <button
+        type="button"
+        aria-label={`Reorder ${track.title}`}
+        className="touch-none text-slate-400 hover:text-slate-600 grid h-8 w-8 place-items-center cursor-grab active:cursor-grabbing shrink-0"
+        {...attributes}
+        {...listeners}
+      >
+        <ModalIcon.Drag />
+      </button>
+      <img
+        src={thumbnail(track.id)}
+        alt=""
+        className="h-10 w-10 shrink-0 rounded-lg object-cover"
+        draggable={false}
+      />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold" style={{ color: "var(--text-strong)" }}>
+          {track.title}
+        </p>
+        <p className="truncate text-xs font-medium" style={{ color: "var(--text-muted)" }}>
+          {track.artist}
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={() => onRemove(track.id)}
+        aria-label={`Remove ${track.title} from playlist`}
+        className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-slate-400 hover:text-red-500 transition-colors"
+      >
+        <ModalIcon.Trash />
+      </button>
+    </div>
+  )
 }
 
 type View = "library" | "save"
@@ -45,6 +131,28 @@ const ModalIcon = {
         strokeWidth="2"
         strokeLinecap="round"
       />
+    </svg>
+  ),
+  Edit: () => (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M16.474 5.408l2.118 2.117m-.756-3.982L12.109 9.27a2.118 2.118 0 00-.58 1.082L11 13l2.648-.53c.41-.082.786-.283 1.082-.579l5.727-5.727a2.995 2.995 0 00-4.234-4.234zM19 19H5"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  ),
+  Drag: () => (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M8 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM16 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM16 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM16 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0z"/>
     </svg>
   ),
   Library: () => (
@@ -208,6 +316,10 @@ export default function SavedPlaylistsModal({
   onPlay,
   onAppend,
   onDelete,
+  onUpdate,
+  onCreate,
+  searchEndpoint,
+  currentId,
 }: {
   open: boolean
   view: View
@@ -220,11 +332,65 @@ export default function SavedPlaylistsModal({
   onPlay: (playlist: SavedPlaylist) => void
   onAppend: (playlist: SavedPlaylist) => void
   onDelete: (playlist: SavedPlaylist) => void
+  onCreate: (name: string, tracks: Track[]) => void
+  searchEndpoint: string
+  currentId: string | null
+  onUpdate: (playlist: SavedPlaylist) => void
 }) {
   const panelRef = useRef<HTMLDivElement | null>(null)
   const nameRef = useRef<HTMLInputElement | null>(null)
+  const reorderingRef = useRef(false)
   const [name, setName] = useState(defaultName)
   const [pendingPlayId, setPendingPlayId] = useState<string | null>(null)
+  const [editingPlaylistId, setEditingPlaylistId] = useState<string | null>(null)
+  const [editName, setEditName] = useState("")
+  const [editTracks, setEditTracks] = useState<Track[]>([])
+
+  const [editorTab, setEditorTab] = useState<"songs" | "youtube" | "queue">("songs")
+  const creating = editingPlaylistId === "__new_playlist__"
+  const editingPlaylist = creating ? { id: "__new_playlist__", name: "", tracks: [], savedAt: "" } : playlists.find(p => p.id === editingPlaylistId)
+  const addDraftSongs = (songs: Track[]) => {
+    setEditTracks(items => {
+      const ids = new Set(items.map(song => song.id))
+      const additions = songs.filter(song => { if (ids.has(song.id)) return false; ids.add(song.id); return true })
+      return [...additions.map(song => ({ ...song })), ...items]
+    })
+  }
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  )
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    reorderingRef.current = false
+    const { active, over } = event
+    if (over && active.id !== over.id) {
+      setEditTracks((items) => {
+        const oldIndex = items.findIndex((i) => i.id === active.id)
+        const newIndex = items.findIndex((i) => i.id === over.id)
+        if (oldIndex < 0 || newIndex < 0) return items
+        return arrayMove(items, oldIndex, newIndex)
+      })
+    }
+  }
+
+  const handleSaveEdit = () => {
+    if (!editName.trim() || !editTracks.length) return
+    if (creating) {
+      onCreate(editName.trim(), editTracks)
+    } else if (editingPlaylist && onUpdate) {
+      onUpdate({
+        ...editingPlaylist,
+        name: editName.trim() || editingPlaylist.name,
+        tracks: editTracks,
+      })
+    }
+    setEditingPlaylistId(null)
+  }
+
   const [viewport, setViewport] = useState<{
     top: number
     height: number
@@ -235,7 +401,11 @@ export default function SavedPlaylistsModal({
   }, [defaultName, open, view])
 
   useEffect(() => {
-    if (!open || view !== "library") setPendingPlayId(null)
+    if (!open || view !== "library") {
+      setPendingPlayId(null)
+      setEditingPlaylistId(null)
+      reorderingRef.current = false
+    }
   }, [open, view])
 
   useEffect(() => {
@@ -261,16 +431,16 @@ export default function SavedPlaylistsModal({
     if (!open) return
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = "hidden"
-    const focusTimer = window.setTimeout(() => {
-      if (view === "save") nameRef.current?.focus()
+    {
+      if (view === "save" || editingPlaylistId) nameRef.current?.focus()
       else
         panelRef.current
           ?.querySelector<HTMLElement>("button:not(:disabled)")
           ?.focus()
-    }, 60)
+    }
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
+      if (event.key === "Escape" && !event.defaultPrevented && !reorderingRef.current) {
         event.stopPropagation()
         onClose()
         return
@@ -293,11 +463,10 @@ export default function SavedPlaylistsModal({
 
     window.addEventListener("keydown", onKeyDown, true)
     return () => {
-      window.clearTimeout(focusTimer)
       document.body.style.overflow = previousOverflow
       window.removeEventListener("keydown", onKeyDown, true)
     }
-  }, [open, onClose, view])
+  }, [open, onClose, view, editingPlaylistId])
 
   if (!open) return null
 
@@ -321,15 +490,19 @@ export default function SavedPlaylistsModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="saved-playlists-title"
-        className="modal-panel neu safe-b relative z-10 flex max-h-full w-full max-w-2xl flex-col rounded-[1.75rem] p-4 sm:rounded-[2rem] sm:p-6"
+        className={`modal-panel neu safe-b relative z-10 flex max-h-full w-full max-w-2xl flex-col rounded-[1.75rem] p-4 sm:rounded-[2rem] sm:p-6 ${editingPlaylistId ? "h-[min(760px,100%)]" : ""}`}
       >
         <div className="flex items-start justify-between gap-3">
+          
           <div className="flex min-w-0 items-start gap-2.5">
-            {view === "save" && (
+            {(view === "save" || editingPlaylistId) && (
               <button
                 type="button"
-                onClick={() => onViewChange("library")}
-                aria-label="Back to My playlists"
+                onClick={() => {
+                  if (editingPlaylistId) setEditingPlaylistId(null)
+                  else onViewChange("library")
+                }}
+                aria-label="Back"
                 className="neu-btn grid h-11 w-11 shrink-0 place-items-center rounded-full"
               >
                 <ModalIcon.Back />
@@ -341,18 +514,21 @@ export default function SavedPlaylistsModal({
                 className="font-display text-[0.68rem] font-bold uppercase tracking-[0.3em]"
                 style={{ color: "var(--text-muted)" }}
               >
-                {view === "save" ? "Save this queue" : "My playlists"}
+                {editingPlaylistId ? creating ? "Create Playlist" : "Edit Playlist" : view === "save" ? "Save this queue" : "My playlists"}
               </p>
               <p
                 className="mt-1 text-xs leading-relaxed"
                 style={{ color: "var(--text-muted)" }}
               >
-                {view === "save"
+                {editingPlaylistId 
+                  ? "Name your mix, add songs, and arrange them your way."
+                  : view === "save"
                   ? "Keep this exact order for another listening session."
                   : "Your mixes are saved privately on this device."}
               </p>
             </div>
           </div>
+
           <button
             type="button"
             onClick={onClose}
@@ -363,7 +539,97 @@ export default function SavedPlaylistsModal({
           </button>
         </div>
 
-        {view === "save" ? (
+        
+        {editingPlaylistId && editingPlaylist ? (
+          <div className="mt-5 flex min-h-0 flex-col flex-1">
+            <label htmlFor="edit-playlist-name" className="block px-1 text-xs font-bold" style={{ color: "var(--text-strong)" }}>
+              Playlist name
+            </label>
+            <div className="neu-inset mt-2 flex items-center gap-3 rounded-2xl px-4 py-3 transition-all focus-within:ring-2 focus-within:ring-slate-300/50">
+              <span className="text-slate-400">
+                <ModalIcon.Edit />
+              </span>
+              <input
+                ref={nameRef}
+                id="edit-playlist-name"
+                maxLength={60}
+                placeholder="My new playlist"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                className="w-full min-w-0 bg-transparent text-sm font-semibold outline-none"
+                style={{ color: "var(--text-strong)" }}
+              />
+            </div>
+
+            <div className="neu-inset mt-4 grid shrink-0 grid-cols-3 gap-1 rounded-xl p-1" role="tablist" aria-label="Playlist songs">
+              {(["songs", "youtube", "queue"] as const).map(tab => (
+                <button key={tab} id={`playlist-tab-${tab}`} type="button" role="tab" tabIndex={editorTab === tab ? 0 : -1} onKeyDown={event => {
+                  const tabs = ["songs", "youtube", "queue"] as const
+                  const index = tabs.indexOf(tab)
+                  const next = event.key === "ArrowRight" ? (index + 1) % 3 : event.key === "ArrowLeft" ? (index + 2) % 3 : event.key === "Home" ? 0 : event.key === "End" ? 2 : -1
+                  if (next < 0) return
+                  event.preventDefault()
+                  setEditorTab(tabs[next])
+                  document.getElementById(`playlist-tab-${tabs[next]}`)?.focus()
+                }} aria-selected={editorTab === tab} aria-controls="playlist-song-panel" onClick={() => setEditorTab(tab)} className={`${editorTab === tab ? "accent-btn" : ""} min-h-11 rounded-lg px-1 text-xs font-bold`} style={editorTab === tab ? undefined : { color: "var(--text-muted)" }}>{tab === "songs" ? `Songs (${editTracks.length})` : tab === "youtube" ? "YouTube" : "Current queue"}</button>
+              ))}
+            </div>
+            <div id="playlist-song-panel" role="tabpanel" aria-labelledby={`playlist-tab-${editorTab}`} className="flex min-h-0 flex-1 flex-col">
+            <div style={editorTab === "songs" ? undefined : { display: "none" }} className="soft-scroll mt-4 min-h-0 flex-1 overflow-y-auto space-y-2 pb-2 pr-1">
+              {!editTracks.length && <div className="neu-inset rounded-2xl p-6 text-center">
+                <p className="text-sm font-bold" style={{ color: "var(--text-strong)" }}>Your playlist starts here</p>
+                <p className="mt-2 text-xs" style={{ color: "var(--text-muted)" }}>Find songs on YouTube or choose from your current queue.</p>
+                <button type="button" onClick={() => setEditorTab("youtube")} className="accent-btn mt-4 rounded-xl px-4 py-3 text-sm font-bold">Find songs</button>
+              </div>}
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragStart={() => { reorderingRef.current = true }}
+                onDragCancel={() => { reorderingRef.current = false }}
+                onDragEnd={handleDragEnd}
+              >
+                <SortableContext
+                  items={editTracks}
+                  strategy={verticalListSortingStrategy}
+                >
+                  {editTracks.map((track) => (
+                    <SortableTrackItem
+                      key={track.id}
+                      track={track}
+                      onRemove={(id) =>
+                        setEditTracks((items) => items.filter((t) => t.id !== id))
+                      }
+                    />
+                  ))}
+                </SortableContext>
+              </DndContext>
+            </div>
+
+              <div style={{ display: editorTab === "songs" ? "none" : "flex" }} className="min-h-0 flex-1 flex-col">
+                <PlaylistSongPicker source={editorTab === "queue" ? "queue" : "youtube"} endpoint={searchEndpoint} queue={currentTracks} selected={editTracks} currentId={currentId} onAdd={addDraftSongs} />
+              </div>
+            </div>
+            <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end shrink-0 pt-2 border-t border-slate-200/50">
+              <button
+                type="button"
+                onClick={() => setEditingPlaylistId(null)}
+                className="neu-btn rounded-xl px-5 py-3 text-sm font-bold"
+                style={{ color: "var(--text-strong)" }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveEdit}
+                disabled={!editName.trim() || !editTracks.length}
+                className="accent-btn flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-bold"
+              >
+                <ModalIcon.Save />
+                {creating ? "Create Playlist" : "Save Changes"}
+              </button>
+            </div>
+          </div>
+        ) : view === "save" ? (
           <form
             className="mt-5 min-h-0"
             onSubmit={(event) => {
@@ -443,15 +709,26 @@ export default function SavedPlaylistsModal({
           </form>
         ) : (
           <>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <button type="button" onClick={() => {
+                setPendingPlayId(null)
+                setEditName("")
+                setEditTracks([])
+                setEditorTab("youtube")
+                setEditingPlaylistId("__new_playlist__")
+              }} className="accent-btn flex min-h-11 items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-bold">
+                <ModalIcon.Plus /> Create Playlist
+              </button>
             <button
               type="button"
               onClick={() => onViewChange("save")}
               disabled={currentTracks.length === 0}
-              className="accent-btn mt-5 flex w-full items-center justify-center gap-2 rounded-2xl px-5 py-3.5 text-sm font-bold sm:w-fit"
+              className="neu-btn flex min-h-11 items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-bold"
             >
               <ModalIcon.Save />
               Save current queue
             </button>
+            </div>
 
             <div className="soft-scroll -mx-1 mt-4 min-h-0 flex-1 space-y-3 overflow-y-auto px-1 pb-1">
               {playlists.length === 0 ? (
@@ -472,8 +749,7 @@ export default function SavedPlaylistsModal({
                     className="mx-auto mt-1 max-w-sm text-xs leading-relaxed"
                     style={{ color: "var(--text-muted)" }}
                   >
-                    Arrange the queue the way you like, then save it to return
-                    to it anytime.
+                    Create a playlist with your favorite songs, or save your current queue to listen again.
                   </p>
                 </div>
               ) : (
@@ -512,7 +788,7 @@ export default function SavedPlaylistsModal({
                         <ModalIcon.Trash />
                       </button>
                     </div>
-                    <div className="mt-3 grid grid-cols-2 gap-2 sm:ml-[5.5rem] sm:flex">
+                    <div className="mt-3 grid grid-cols-3 gap-2 sm:ml-[5.5rem] sm:flex">
                       <button
                         type="button"
                         onClick={() => {
@@ -524,6 +800,21 @@ export default function SavedPlaylistsModal({
                       >
                         <ModalIcon.Play />
                         Play now
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`Edit ${playlist.name}`}
+                        onClick={() => {
+                          setPendingPlayId(null)
+                          setEditingPlaylistId(playlist.id)
+                          setEditorTab("songs")
+                          setEditName(playlist.name)
+                          setEditTracks(playlist.tracks)
+                        }}
+                        className="neu-btn flex items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-[0.72rem] font-bold"
+                      >
+                        <ModalIcon.Edit />
+                        Edit
                       </button>
                       <button
                         type="button"

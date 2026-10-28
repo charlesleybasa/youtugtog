@@ -1,6 +1,6 @@
 {
-  "title": "Youtugtog",
-  "description": "Tugtog Pinoy anytime — a minimalist, YouTube-powered music player.",
+  "title": "Tugtog",
+  "description": "Build and play focused music-video queues through YouTube’s official player.",
   "language": "en",
   "robots": {
     "index": true

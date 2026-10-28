@@ -1,0 +1,16 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "TEAMID.com.example.tugtog",
+        "paths": [
+          "/open/player/*",
+          "/open/queue*",
+          "/open/search",
+          "/open/library"
+        ]
+      }
+    ]
+  }
+}
