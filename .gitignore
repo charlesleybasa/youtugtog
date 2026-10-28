@@ -3,7 +3,13 @@ dist
 .DS_Store
 *.local
 .env
+# `.env` alone does not match `.env.capacitor`; ignore every env file and
+# re-admit the checked-in templates.
+.env.*
+!.env.example
+!.env.capacitor.example
 .vercel
-.pnpm-store
-ios/build
-ios/**/xcuserdata
+
+# JetBrains / Android Studio
+.idea/
+.env*

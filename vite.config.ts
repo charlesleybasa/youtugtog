@@ -3,14 +3,6 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import {
-  fetchVideoSummaries,
-  isVideoId,
-  searchMusicVideos,
-  YouTubeUpstreamError,
-} from './api/_youtube.ts'
-import sessionHandler from './api/session.ts'
-import { getSessionState, subscribeSession } from './api/_session.ts'
 
 // Figma Make stores site metadata in .figma/make/site.json. That file is
 // generated inside Figma and can be missing when the project is built in
@@ -31,11 +23,26 @@ const siteConfiguration = loadSiteConfiguration()
 export default defineConfig(({ mode }) => {
   // .figma/make/deploy-preview passes `--mode development` for cached-preview builds.
   const emitSourcemaps = mode === 'development'
+  // `npm run build:capacitor` passes `--mode capacitor`, which additionally
+  // loads .env.capacitor (where VITE_API_BASE_URL lives) on top of .env.
+  const isCapacitorBuild = mode === 'capacitor'
   const env = loadEnv(mode, process.cwd(), '')
 
   return {
-    base: process.env.FIGMA_PUBLIC_URL ? `${process.env.FIGMA_PUBLIC_URL}/` : '/',
+    // Capacitor serves the bundle from the root of the WebView's own local
+    // server, so asset URLs have to stay root-relative. FIGMA_PUBLIC_URL
+    // rewrites them to an absolute remote host, which would leave the
+    // shipped APK loading its own JS/CSS over the network — broken offline,
+    // and slow even when online.
+    base:
+      !isCapacitorBuild && process.env.FIGMA_PUBLIC_URL
+        ? `${process.env.FIGMA_PUBLIC_URL}/`
+        : '/',
     build: {
+      // Vite's default, stated explicitly because capacitor.config.ts
+      // `webDir` must match it — a silent change here would make
+      // `npx cap sync` copy a stale or empty directory into the APK.
+      outDir: 'dist',
       sourcemap: emitSourcemaps ? 'inline' : false,
       minify: !emitSourcemaps,
     },
@@ -46,7 +53,7 @@ export default defineConfig(({ mode }) => {
       figmaErrorOverlayReplay(),
       figmaReactRefreshBoundaryFallback(),
       figmaMakeKitPlugin({ storiesGlob: '/src/**/*.stories.{ts,tsx,js,jsx}' }),
-      youtubeApiProxy(env.YOUTUBE_API_KEY),
+      youtubeSearchProxy(env.YOUTUBE_API_KEY),
     ],
     resolve: {
       alias: {
@@ -58,6 +65,27 @@ export default defineConfig(({ mode }) => {
       port: process.env.PORT ? parseInt(process.env.PORT, 10) : 0,
       strictPort: !!process.env.PORT,
       watch: { ignored: ['**/.figma/**'] },
+      // `vite dev` has no serverless runtime, so /api/* (Vercel functions)
+      // would 404 locally. Lyrics need no API key, so proxy them straight to
+      // LRCLIB in dev — the browser cannot call it directly (no CORS).
+      // In production the real api/lyrics.ts function handles this path.
+      proxy: {
+        '/api/lyrics': {
+          target: 'https://lrclib.net',
+          changeOrigin: true,
+          rewrite: (requestPath: string) => {
+            const query = new URLSearchParams(requestPath.split('?')[1] ?? '')
+            const upstream = new URLSearchParams()
+            upstream.set('track_name', query.get('track') ?? '')
+            upstream.set('artist_name', query.get('artist') ?? '')
+            const album = query.get('album')
+            if (album) upstream.set('album_name', album)
+            const duration = query.get('duration')
+            if (duration) upstream.set('duration', duration)
+            return `/api/get?${upstream.toString()}`
+          },
+        },
+      },
     },
     preview: {
       host: '0.0.0.0',
@@ -78,6 +106,9 @@ type FigmaSiteConfiguration = {
   }
   openGraph?: {
     image?: string
+  }
+  analytics?: {
+    googleAnalyticsId?: string
   }
   customScripts?: {
     headStart?: string
@@ -107,6 +138,7 @@ function figmaSiteConfiguration(config: FigmaSiteConfiguration): Plugin {
   const favicon = config.icons?.icon ?? ''
   const socialImage = config.openGraph?.image ?? ''
   const language = sanitizeHtmlValue(config.language) || 'en'
+  const googleAnalyticsId = sanitizeHtmlValue(config.analytics?.googleAnalyticsId)
   const headStart = config.customScripts?.headStart ?? ''
   const headEnd = config.customScripts?.headEnd ?? ''
   const bodyStart = config.customScripts?.bodyStart ?? ''
@@ -164,6 +196,29 @@ function figmaSiteConfiguration(config: FigmaSiteConfiguration): Plugin {
             { tag: 'meta', attrs: { property: 'og:image', content: socialImage }, injectTo: 'head' },
             { tag: 'meta', attrs: { name: 'twitter:card', content: 'summary_large_image' }, injectTo: 'head' },
             { tag: 'meta', attrs: { name: 'twitter:image', content: socialImage }, injectTo: 'head' },
+          )
+        }
+
+        if (googleAnalyticsId) {
+          tags.push(
+            {
+              tag: 'script',
+              attrs: {
+                async: true,
+                src: `https://www.googletagmanager.com/gtag/js?id=${googleAnalyticsId}`,
+              },
+              injectTo: 'head',
+            },
+            {
+              tag: 'script',
+              children: `
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', ${JSON.stringify(googleAnalyticsId)});
+`,
+              injectTo: 'head',
+            },
           )
         }
 
@@ -303,192 +358,53 @@ function figmaReactRefreshBoundaryFallback(): Plugin {
  * builds (`vite build`) skip it entirely so the route doesn't leak
  * into shipped bundles.
  */
-function youtubeApiProxy(apiKey?: string): Plugin {
+function youtubeSearchProxy(apiKey?: string): Plugin {
   return {
-    name: 'youtube-api-proxy',
+    name: 'youtube-search-proxy',
     apply: 'serve',
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
         const url = req.url ?? ''
         const [pathname, rawQuery] = url.split('?')
-        if (
-          pathname !== '/api/search' &&
-          pathname !== '/api/videos' &&
-          pathname !== '/api/session'
-        )
-          return next()
-        const send = (status: number, body: unknown, cacheControl?: string) => {
-          res.statusCode = status
+        if (pathname !== '/api/search') return next()
+        if (req.method !== 'GET') {
+          res.statusCode = 405
+          res.setHeader('Allow', 'GET')
           res.setHeader('Content-Type', 'application/json; charset=utf-8')
-          if (cacheControl) res.setHeader('Cache-Control', cacheControl)
-          res.end(JSON.stringify(body))
-        }
-        const fail = (status: number, code: string, message: string) =>
-          send(status, { error: { code, message } })
-
-        const params = new URLSearchParams(rawQuery ?? '')
-
-        if (pathname === '/api/session') {
-          if (req.method === 'GET' && params.get('stream') === '1') {
-            const code = params.get('code') ?? ''
-            const role = params.get('role') ?? undefined
-            const clientId = params.get('clientId') ?? undefined
-            const initial = getSessionState(code, role, clientId)
-            if (!initial) {
-              fail(404, 'session_not_found', 'No active session found for that code.')
-              return
-            }
-
-            res.statusCode = 200
-            res.setHeader('Content-Type', 'text/event-stream; charset=utf-8')
-            res.setHeader('Cache-Control', 'no-cache, no-transform')
-            res.setHeader('Connection', 'keep-alive')
-            res.flushHeaders?.()
-
-            const writeEvent = (payload: unknown) => {
-              res.write(`data: ${JSON.stringify(payload)}\n\n`)
-            }
-
-            writeEvent({
-              type: 'snapshot',
-              snapshot: initial.snapshot,
-              connectedClients: initial.connectedClients,
-              ackCommandIds: initial.ackCommandIds,
-            })
-            if (initial.pendingCommands.length > 0 && role === 'host') {
-              writeEvent({
-                type: 'commands',
-                commands: initial.pendingCommands,
-                connectedClients: initial.connectedClients,
-              })
-            }
-
-            const unsubscribe = subscribeSession(code, role, clientId, (event) => {
-              writeEvent(event)
-            })
-            const keepAlive = setInterval(() => {
-              res.write(': ping\n\n')
-            }, 15000)
-
-            req.on('close', () => {
-              clearInterval(keepAlive)
-              unsubscribe?.()
-            })
-            return
-          }
-
-          let parsedBody: unknown = undefined
-          if (req.method === 'POST') {
-            try {
-              const chunks: Buffer[] = []
-              for await (const chunk of req) {
-                chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk)
-              }
-              const rawBody = Buffer.concat(chunks).toString('utf8')
-              parsedBody = rawBody ? JSON.parse(rawBody) : {}
-            } catch {
-              fail(400, 'invalid_request', 'Invalid JSON request body.')
-              return
-            }
-          }
-
-          const queryRecord: Record<string, string> = {}
-          for (const [k, v] of params.entries()) {
-            queryRecord[k] = v
-          }
-
-          let statusCode = 200
-          const apiRes = {
-            setHeader(name: string, value: string) {
-              res.setHeader(name, value)
-            },
-            status(code: number) {
-              statusCode = code
-              return apiRes
-            },
-            json(body: unknown) {
-              send(statusCode, body)
-              return body
-            },
-          }
-
-          await sessionHandler(
-            { method: req.method, query: queryRecord, body: parsedBody },
-            apiRes,
-          )
+          res.end(JSON.stringify({ error: 'Method not allowed' }))
           return
         }
 
-        if (req.method !== 'GET') {
-          res.setHeader('Allow', 'GET')
-          fail(405, 'method_not_allowed', 'Only GET requests are supported.')
+        const params = new URLSearchParams(rawQuery ?? '')
+        const query = params.get('q')
+        if (!query) {
+          res.statusCode = 400
+          res.setHeader('Content-Type', 'application/json; charset=utf-8')
+          res.end(JSON.stringify({ error: 'Missing search query' }))
           return
         }
 
         const key = apiKey ?? process.env.YOUTUBE_API_KEY
         if (!key) {
-          fail(500, 'service_unconfigured', 'YouTube access is not configured yet.')
+          res.statusCode = 500
+          res.setHeader('Content-Type', 'application/json; charset=utf-8')
+          res.end(JSON.stringify({ error: 'Missing YOUTUBE_API_KEY in environment' }))
           return
         }
 
-        try {
-          if (pathname === '/api/search') {
-            const query = params.get('q')?.trim().replace(/\s+/g, ' ') ?? ''
-            const limit = Number(params.get('limit') ?? '8')
-            if (query.length < 2 || query.length > 100) {
-              fail(
-                400,
-                'invalid_request',
-                'Search terms must contain between 2 and 100 characters.',
-              )
-              return
-            }
-            if (!Number.isInteger(limit) || limit < 1 || limit > 8) {
-              fail(
-                400,
-                'invalid_request',
-                'The result limit must be a whole number between 1 and 8.',
-              )
-              return
-            }
-            const result = await searchMusicVideos(query, limit, key)
-            send(
-              200,
-              result,
-              'public, max-age=0, s-maxage=300, stale-while-revalidate=60',
-            )
-            return
-          }
+        params.set('key', key)
+        const target = `https://www.googleapis.com/youtube/v3/search?${params.toString()}`
 
-          const ids = (params.get('ids') ?? '')
-            .split(',')
-            .map((id) => id.trim())
-            .filter(Boolean)
-          if (!ids.length || ids.length > 50 || ids.some((id) => !isVideoId(id))) {
-            fail(
-              400,
-              'invalid_request',
-              'Provide between 1 and 50 comma-separated YouTube video IDs.',
-            )
-            return
-          }
-          const result = await fetchVideoSummaries(ids, key)
-          send(
-            200,
-            result,
-            'public, max-age=0, s-maxage=86400, stale-while-revalidate=3600',
-          )
+        try {
+          const apiRes = await fetch(target)
+          const body = await apiRes.text()
+          res.statusCode = apiRes.status
+          res.setHeader('Content-Type', apiRes.headers.get('content-type') ?? 'application/json; charset=utf-8')
+          res.end(body)
         } catch (error) {
-          const quota =
-            error instanceof YouTubeUpstreamError &&
-            (/quota/i.test(error.reason ?? '') || error.status === 429)
-          fail(
-            quota ? 429 : 502,
-            quota ? 'quota_exceeded' : 'upstream_unavailable',
-            quota
-              ? 'YouTube access is temporarily busy. Please try again later.'
-              : 'YouTube is temporarily unavailable.',
-          )
+          res.statusCode = 500
+          res.setHeader('Content-Type', 'application/json; charset=utf-8')
+          res.end(JSON.stringify({ error: 'YouTube search proxy failed' }))
         }
       })
     },

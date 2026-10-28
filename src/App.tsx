@@ -1,4 +1,3 @@
-import usePlaylistSuggestions from "./usePlaylistSuggestions"
 import {
   useState,
   useRef,
@@ -10,100 +9,71 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react"
 import { flushSync } from "react-dom"
+import logoUrl from "./imports/ChatGPT_Image_Jul_30__2026__01_48_16_PM.png"
 import SavedPlaylistsModal, {
   type SavedPlaylist,
 } from "./components/SavedPlaylistsModal"
-import SessionModal from "./components/SessionModal"
-import LegalPage, { isLegalPath } from "./components/LegalPage"
 import { pickNextShuffledId } from "./shuffle"
-import {
-  apiCreateSession,
-  apiEndSession,
-  apiJoinSession,
-  apiLeaveSession,
-  apiPollSession,
-  apiSendCommand,
-  apiSyncSession,
-  buildSessionShareUrl,
-  createCommandId,
-  describeRemoteCommand,
-  formatSessionCode,
-  getOrCreateClientId,
-  loadActiveSession,
-  openSessionBroadcast,
-  openSessionEventStream,
-  parseSessionCodeInput,
-  removeLocalSessionBackup,
-  saveActiveSession,
-  saveLocalSessionBackup,
-  type SessionCommand,
-  type SessionCommandPayload,
-  type SessionRole,
-  type SessionSnapshot,
-} from "./sessionSync"
+import { apiUrl } from "./api"
 
 /* --------------------------------------------------------------------- *
- * Tugtog — build and play a YouTube music queue.
+ * Youtugtog — "Tugtog Pinoy anytime".
  *
- * Playback runs through the official YouTube IFrame Player API. The player
- * remains visible while playback is active and pauses whenever the page is
- * hidden or another surface covers it.
+ * Playback runs through the OFFICIAL YouTube IFrame Player API. We never
+ * extract or re-host audio streams — the real player stays mounted and
+ * rendered the whole time, so views and ads count normally. "Audio only"
+ * here is a presentation choice: the video surface is parked off-screen
+ * behind the page while a circular cover-art disc drives the UI, and the
+ * user can bring the video back at any time with the Video toggle.
  * --------------------------------------------------------------------- */
 
 type Track = { id: string; title: string; artist: string }
 type Repeat = "off" | "all" | "one"
 type Theme = "system" | "light" | "dark"
+type Stage = "art" | "lyrics" | "video"
 type ToastState = {
   id: number
   message: string
   action?: { label: string; run: () => void }
 }
 
-const STARTER: Track[] = []
+const STARTER: Track[] = [
+  { id: "JGwWNGJdvx8", title: "Shape of You", artist: "Ed Sheeran" },
+  {
+    id: "OPf0YbXqDm0",
+    title: "Uptown Funk",
+    artist: "Mark Ronson ft. Bruno Mars",
+  },
+  {
+    id: "kJQP7kiw5Fk",
+    title: "Despacito",
+    artist: "Luis Fonsi ft. Daddy Yankee",
+  },
+  {
+    id: "RgKAFK5djSk",
+    title: "See You Again",
+    artist: "Wiz Khalifa ft. Charlie Puth",
+  },
+  { id: "hT_nvWreIhg", title: "Counting Stars", artist: "OneRepublic" },
+  { id: "60ItHLz5WEA", title: "Faded", artist: "Alan Walker" },
+  { id: "CevxZvSJLk8", title: "Roar", artist: "Katy Perry" },
+  { id: "2Vv-BfVoq4g", title: "Perfect", artist: "Ed Sheeran" },
+  { id: "YQHsXMglC9A", title: "Hello", artist: "Adele" },
+]
 
-const SEARCH_PROXY = "/api/search"
-const VIDEO_PROXY = "/api/videos"
-const STORE_KEY = "tugtog:state:v3"
-const LEGACY_STORE_KEYS = ["youtugtog:state:v2", "youtugtog:state:v1"]
+const SEARCH_PROXY = apiUrl("/api/search")
+const STORE_KEY = "youtugtog:state:v2"
+const LEGACY_STORE_KEY = "youtugtog:state:v1"
 
 /* ---- Small helpers -------------------------------------------------- */
 
 function parseVideoId(input: string): string | null {
   const s = input.trim()
   if (/^[a-zA-Z0-9_-]{11}$/.test(s)) return s
-
-  let url: URL
-  try {
-    url = new URL(s)
-  } catch {
-    return null
-  }
-
-  const host = url.hostname.toLowerCase()
-  const pathParts = url.pathname.split("/").filter(Boolean)
-  let candidate: string | null = null
-
-  if (host === "youtu.be" || host === "www.youtu.be") {
-    candidate = pathParts[0] ?? null
-  } else if (
-    host === "youtube.com" ||
-    host === "www.youtube.com" ||
-    host === "m.youtube.com" ||
-    host === "music.youtube.com"
-  ) {
-    candidate = url.searchParams.get("v")
-    if (
-      !candidate &&
-      pathParts.length > 1 &&
-      ["embed", "shorts", "live"].includes(pathParts[0])
-    ) {
-      candidate = pathParts[1]
-    }
-  }
-
-  return candidate && /^[a-zA-Z0-9_-]{11}$/.test(candidate)
-    ? candidate
-    : null
+  const m = s.match(
+    /(?:youtu\.be\/|v=|\/embed\/|\/shorts\/|\/live\/)([a-zA-Z0-9_-]{11})/,
+  )
+  return m ? m[1] : null
 }
 
 const fmt = (s: number) => {
@@ -123,40 +93,233 @@ function decodeEntities(value: string): string {
 
 const PENDING_TITLE = "Added from YouTube"
 
-type VideoSummary = {
-  id: string
-  title: string
-  channelTitle: string
-  thumbnailURL: string
-  durationSeconds: number
-  embeddable: boolean
-  madeForKids: boolean
-  refreshedAt: string
-}
-
-/** Resolve and validate pasted IDs through the same API used by the iOS app. */
+/**
+ * Resolve a real title/channel for a pasted link via YouTube's public oEmbed
+ * endpoint (no API key, CORS-enabled). Saved queues outlive the session now,
+ * so a persisted "Added from YouTube" placeholder would be there forever.
+ */
 async function fetchVideoMeta(
   id: string,
 ): Promise<{ title: string; artist: string } | null> {
   try {
-    const res = await fetch(`${VIDEO_PROXY}?ids=${encodeURIComponent(id)}`)
+    const target = `https://www.youtube.com/watch?v=${id}`
+    const res = await fetch(
+      `https://www.youtube.com/oembed?url=${encodeURIComponent(target)}&format=json`,
+    )
     if (!res.ok) return null
-    const data = (await res.json()) as { items?: VideoSummary[] }
-    const video = data.items?.[0]
-    if (!video) return null
+    const data = await res.json()
+    if (!data?.title) return null
     return {
-      title: video.title,
-      artist: video.channelTitle,
+      title: decodeEntities(String(data.title)),
+      artist: decodeEntities(String(data.author_name ?? "YouTube")),
     }
   } catch {
     return null
   }
 }
 
+const coverArt = (id: string) =>
+  `https://i.ytimg.com/vi/${id}/maxresdefault.jpg`
+const coverArtFallback = (id: string) =>
+  `https://i.ytimg.com/vi/${id}/mqdefault.jpg`
 const rowThumb = (id: string) => `https://i.ytimg.com/vi/${id}/mqdefault.jpg`
 
 const clamp = (n: number, min: number, max: number) =>
   Math.min(max, Math.max(min, n))
+
+/* ---- Lyrics ---------------------------------------------------------- *
+ * LRCLIB sends no CORS headers, so lyrics come through /api/lyrics.
+ * It is line-level only — no Apple-style word-by-word sweep is possible
+ * from this data, so we highlight whole lines (TIDAL-style).
+ * --------------------------------------------------------------------- */
+
+type LyricLine = { time: number; text: string }
+type Lyrics =
+  | { kind: "synced"; lines: LyricLine[] }
+  | { kind: "plain"; text: string }
+  | { kind: "instrumental" }
+  | { kind: "none" }
+
+const LYRICS_CACHE_KEY = "youtugtog:lyrics:v1"
+
+/** Noise YouTube uploaders append that would break a lyrics lookup. */
+const TITLE_NOISE =
+  /\s*[([][^)\]]*(official|lyric|audio|video|hd|4k|mv|m\/v|visualizer|remaster|explicit|clip|performance|version)[^)\]]*[)\]]/gi
+
+/**
+ * YouTube gives us "Ed Sheeran - Shape of You (Official Video)" and a channel
+ * like "Ed SheeranVEVO". LRCLIB wants a clean artist + track pair.
+ */
+export function parseTrackMeta(track: Track): { track: string; artist: string } {
+  const cleanedTitle = decodeEntities(track.title)
+    .replace(TITLE_NOISE, "")
+    .replace(/\s*[|｜]\s*.*$/, "")
+    .trim()
+
+  const channel = decodeEntities(track.artist)
+    .replace(/\s*-\s*Topic$/i, "")
+    .replace(/VEVO$/i, "")
+    .trim()
+
+  // "Artist - Title" is by far the most common shape.
+  const split = cleanedTitle.split(/\s+[-–—]\s+/)
+  if (split.length >= 2) {
+    const [maybeArtist, ...rest] = split
+    return {
+      artist: maybeArtist.trim() || channel,
+      track: rest.join(" - ").trim(),
+    }
+  }
+
+  return { artist: channel, track: cleanedTitle }
+}
+
+/** Parse standard LRC: "[mm:ss.xx] text", honouring an [offset:±ms] tag. */
+export function parseLrc(raw: string): LyricLine[] {
+  const lines: LyricLine[] = []
+  let offset = 0
+
+  for (const row of raw.split(/\r?\n/)) {
+    const offsetTag = row.match(/^\s*\[offset:\s*([+-]?\d+)\s*\]/i)
+    if (offsetTag) {
+      offset = Number(offsetTag[1]) / 1000
+      continue
+    }
+
+    const stamps = [...row.matchAll(/\[(\d+):(\d{1,2})(?:[.:](\d{1,3}))?\]/g)]
+    if (!stamps.length) continue
+
+    const text = row.replace(/\[[^\]]*\]/g, "").trim()
+    for (const [, m, s, frac] of stamps) {
+      const fraction = frac ? Number(frac.padEnd(3, "0")) / 1000 : 0
+      lines.push({ time: Number(m) * 60 + Number(s) + fraction + offset, text })
+    }
+  }
+
+  return lines.sort((a, b) => a.time - b.time)
+}
+
+/** Index of the line active at `time`; -1 before the first line. */
+export function activeLineIndex(lines: LyricLine[], time: number): number {
+  let lo = 0
+  let hi = lines.length - 1
+  let found = -1
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1
+    if (lines[mid].time <= time) {
+      found = mid
+      lo = mid + 1
+    } else {
+      hi = mid - 1
+    }
+  }
+  return found
+}
+
+/** Whole cache, keyed by YouTube video id. Misses are cached too. */
+export function readLyricsCache(): Record<string, Lyrics> {
+  try {
+    const raw = localStorage.getItem(LYRICS_CACHE_KEY)
+    const parsed = raw ? JSON.parse(raw) : {}
+    return parsed && typeof parsed === "object" ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+export function cacheLyrics(cacheKey: string, lyrics: Lyrics): void {
+  try {
+    const cache = readLyricsCache()
+    cache[cacheKey] = lyrics
+    localStorage.setItem(LYRICS_CACHE_KEY, JSON.stringify(cache))
+  } catch {
+    /* storage full or blocked — lyrics still work for this session */
+  }
+}
+
+/**
+ * Fetch synced lyrics from LRCLIB, parse the LRC timestamps into
+ * `{ time, text }` lines, and seed the cache.
+ *
+ * Goes through `/api/lyrics` rather than hitting lrclib.net directly:
+ * LRCLIB sends no CORS headers, so a browser request to it always fails.
+ * The proxy maps these params onto LRCLIB's `track_name` / `artist_name` /
+ * `album_name` / `duration`.
+ */
+export async function fetchSyncedLyrics({
+  trackName,
+  artistName,
+  albumName,
+  duration,
+  cacheKey,
+  signal,
+}: {
+  trackName: string
+  artistName?: string
+  albumName?: string
+  duration?: number
+  /** When given, the result (including a miss) is written to the cache. */
+  cacheKey?: string
+  signal?: AbortSignal
+}): Promise<Lyrics> {
+  const name = trackName.trim()
+  if (!name) return { kind: "none" }
+
+  const url = new URL(apiUrl("/api/lyrics"))
+  url.searchParams.set("track", name)
+  if (artistName?.trim()) url.searchParams.set("artist", artistName.trim())
+  if (albumName?.trim()) url.searchParams.set("album", albumName.trim())
+  if (duration && duration > 0) {
+    url.searchParams.set("duration", String(Math.round(duration)))
+  }
+
+  let result: Lyrics = { kind: "none" }
+  try {
+    const res = await fetch(url.toString(), { signal })
+    if (res.ok) {
+      const data = await res.json()
+      if (data?.instrumental) {
+        result = { kind: "instrumental" }
+      } else if (
+        typeof data?.syncedLyrics === "string" &&
+        data.syncedLyrics.trim()
+      ) {
+        const lines = parseLrc(data.syncedLyrics)
+        result = lines.length
+          ? { kind: "synced", lines }
+          : { kind: "plain", text: data.syncedLyrics.trim() }
+      } else if (
+        typeof data?.plainLyrics === "string" &&
+        data.plainLyrics.trim()
+      ) {
+        result = { kind: "plain", text: data.plainLyrics.trim() }
+      }
+    }
+  } catch (error) {
+    // A cancelled request must not be cached as a miss.
+    if ((error as Error)?.name === "AbortError") throw error
+    result = { kind: "none" }
+  }
+
+  if (cacheKey) cacheLyrics(cacheKey, result)
+  return result
+}
+
+/** Convenience wrapper: derive LRCLIB params from a YouTube-shaped track. */
+export function fetchLyricsForTrack(
+  track: Track,
+  duration: number,
+  signal?: AbortSignal,
+): Promise<Lyrics> {
+  const meta = parseTrackMeta(track)
+  return fetchSyncedLyrics({
+    trackName: meta.track,
+    artistName: meta.artist,
+    duration,
+    cacheKey: track.id,
+    signal,
+  })
+}
 
 type Persisted = {
   tracks?: Track[]
@@ -169,6 +332,8 @@ type Persisted = {
   repeat?: Repeat
   shuffle?: boolean
   keepAwake?: boolean
+  /** Per-video lyric timing nudge, keyed by video id. */
+  lyricOffsets?: Record<string, number>
 }
 
 const THEME_LABEL: Record<Theme, string> = {
@@ -194,8 +359,7 @@ function initialTheme(saved: Persisted): Theme {
 function loadPersisted(): Persisted {
   try {
     const raw =
-      localStorage.getItem(STORE_KEY) ??
-      LEGACY_STORE_KEYS.map((key) => localStorage.getItem(key)).find(Boolean)
+      localStorage.getItem(STORE_KEY) ?? localStorage.getItem(LEGACY_STORE_KEY)
     if (!raw) return {}
     const parsed = JSON.parse(raw) as Persisted
     return parsed && typeof parsed === "object" ? parsed : {}
@@ -710,55 +874,6 @@ const Icon = {
       />
     </svg>
   ),
-  Broadcast: (p: { size?: number }) => (
-    <svg
-      width={p.size ?? 18}
-      height={p.size ?? 18}
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden="true"
-    >
-      <circle cx="12" cy="12" r="2.3" fill="currentColor" />
-      <path
-        d="M8.5 8.5a5 5 0 0 0 0 7M15.5 8.5a5 5 0 0 1 0 7"
-        stroke="currentColor"
-        strokeWidth="1.9"
-        strokeLinecap="round"
-      />
-      <path
-        d="M5.5 5.5a9.2 9.2 0 0 0 0 13M18.5 5.5a9.2 9.2 0 0 1 0 13"
-        stroke="currentColor"
-        strokeWidth="1.9"
-        strokeLinecap="round"
-        opacity="0.7"
-      />
-    </svg>
-  ),
-  Copy: (p: { size?: number }) => (
-    <svg
-      width={p.size ?? 16}
-      height={p.size ?? 16}
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden="true"
-    >
-      <rect
-        x="9"
-        y="9"
-        width="11"
-        height="11"
-        rx="2.5"
-        stroke="currentColor"
-        strokeWidth="1.9"
-      />
-      <path
-        d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"
-        stroke="currentColor"
-        strokeWidth="1.9"
-        strokeLinecap="round"
-      />
-    </svg>
-  ),
 }
 
 /* ---- Primitives ----------------------------------------------------- */
@@ -907,6 +1022,334 @@ function Slider({
     >
       <div className="slider-fill" />
       <span className="slider-thumb" />
+    </div>
+  )
+}
+
+/* ---- Circular cover ------------------------------------------------- */
+
+/* ---- Lyrics stage ---------------------------------------------------- */
+
+function LyricsStage({
+  lyrics,
+  loading,
+  getTime,
+  playing,
+  onSeek,
+  offset,
+  onOffsetChange,
+}: {
+  lyrics: Lyrics | null
+  loading: boolean
+  /** Reads live position; the 250ms state poll is too coarse to drive this. */
+  getTime: () => number
+  playing: boolean
+  onSeek: (seconds: number) => void
+  offset: number
+  onOffsetChange: (next: number) => void
+}) {
+  const scrollRef = useRef<HTMLDivElement | null>(null)
+  const [active, setActive] = useState(-1)
+  const [autoScroll, setAutoScroll] = useState(true)
+  const autoScrollRef = useRef(true)
+  const programmaticScroll = useRef(false)
+  const programmaticTimer = useRef<number | null>(null)
+  const recoverTimer = useRef<number | null>(null)
+  const focusInside = useRef(false)
+
+  /**
+   * Smooth scrolling keeps emitting scroll events well past any short timer,
+   * so a fixed guard makes our own animation look like a user swipe and
+   * wrongly kills auto-scroll. Prefer the real `scrollend` event and fall
+   * back to a generous timeout where it is unsupported.
+   */
+  const beginProgrammaticScroll = useCallback(() => {
+    const container = scrollRef.current
+    programmaticScroll.current = true
+    if (programmaticTimer.current) window.clearTimeout(programmaticTimer.current)
+
+    const done = () => {
+      programmaticScroll.current = false
+      container?.removeEventListener("scrollend", done)
+      if (programmaticTimer.current) {
+        window.clearTimeout(programmaticTimer.current)
+        programmaticTimer.current = null
+      }
+    }
+
+    if (container && "onscrollend" in window) {
+      container.addEventListener("scrollend", done, { once: true })
+    }
+    // Fallback / safety net: longer than any realistic smooth-scroll run.
+    programmaticTimer.current = window.setTimeout(done, 1200)
+  }, [])
+
+  const synced = lyrics?.kind === "synced" ? lyrics.lines : null
+
+  /* Drive the active line from rAF, not the 250ms poll, so the highlight
+     lands on the beat rather than up to a quarter-second late. */
+  useEffect(() => {
+    if (!synced) return
+    let raf = 0
+    const tick = () => {
+      const idx = activeLineIndex(synced, getTime() - offset)
+      setActive((prev) => (prev === idx ? prev : idx))
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [synced, getTime, offset])
+
+  /* Keep the active line anchored at the vertical centre (AMLL's default). */
+  useEffect(() => {
+    if (!synced || active < 0) return
+    if (!autoScrollRef.current || focusInside.current) return
+    const container = scrollRef.current
+    const el = container?.querySelector<HTMLElement>(`[data-line="${active}"]`)
+    if (!container || !el) return
+
+    const target =
+      el.offsetTop - container.clientHeight / 2 + el.offsetHeight / 2
+    beginProgrammaticScroll()
+    container.scrollTo({
+      top: Math.max(0, target),
+      behavior: prefersReducedMotion() ? "auto" : "smooth",
+    })
+  }, [active, synced, beginProgrammaticScroll])
+
+  const onManualScroll = () => {
+    if (programmaticScroll.current) return
+    autoScrollRef.current = false
+    setAutoScroll(false)
+    if (recoverTimer.current) window.clearTimeout(recoverTimer.current)
+    // react-lrc's default: silently resume after 5s of no interaction.
+    recoverTimer.current = window.setTimeout(() => {
+      if (focusInside.current) return
+      autoScrollRef.current = true
+      setAutoScroll(true)
+    }, 5000)
+  }
+
+  const resumeAutoScroll = () => {
+    if (recoverTimer.current) window.clearTimeout(recoverTimer.current)
+    autoScrollRef.current = true
+    setAutoScroll(true)
+    setActive((a) => a) // re-trigger the anchor effect
+    const container = scrollRef.current
+    const el = container?.querySelector<HTMLElement>(`[data-line="${active}"]`)
+    if (container && el) {
+      beginProgrammaticScroll()
+      container.scrollTo({
+        top: Math.max(0, el.offsetTop - container.clientHeight / 2 + el.offsetHeight / 2),
+        behavior: prefersReducedMotion() ? "auto" : "smooth",
+      })
+    }
+  }
+
+  useEffect(
+    () => () => {
+      if (recoverTimer.current) window.clearTimeout(recoverTimer.current)
+      if (programmaticTimer.current) window.clearTimeout(programmaticTimer.current)
+    },
+    [],
+  )
+
+  if (loading) {
+    return (
+      <div className="lyrics-stage" aria-busy="true">
+        <div className="lyrics-scroll lyrics-skeletons">
+          {[88, 72, 94, 64, 80, 70].map((w, i) => (
+            <span key={i} className="skeleton lyrics-skel" style={{ width: `${w}%` }} />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  if (!lyrics || lyrics.kind === "none") {
+    return (
+      <div className="lyrics-stage">
+        <p className="lyrics-empty">No lyrics found for this track.</p>
+      </div>
+    )
+  }
+
+  if (lyrics.kind === "instrumental") {
+    return (
+      <div className="lyrics-stage">
+        <p className="lyrics-empty">♪ Instrumental — no lyrics for this one.</p>
+      </div>
+    )
+  }
+
+  if (lyrics.kind === "plain") {
+    return (
+      <div className="lyrics-stage">
+        <p className="lyrics-badge">Unsynced lyrics</p>
+        <div className="lyrics-scroll" ref={scrollRef}>
+          {lyrics.text.split(/\n/).map((line, i) => (
+            <p key={i} className="lyrics-line is-plain">
+              {line || " "}
+            </p>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  const lines = lyrics.lines
+  return (
+    <div className="lyrics-stage">
+      <div
+        ref={scrollRef}
+        onScroll={onManualScroll}
+        onFocus={() => {
+          focusInside.current = true
+        }}
+        onBlur={() => {
+          focusInside.current = false
+        }}
+        className="lyrics-scroll"
+        // Deliberately NOT aria-live: a line changing every few seconds would
+        // flood the screen reader and the user would fall behind the music.
+        // The list is plain navigable text; aria-current marks the active line.
+        role="group"
+        aria-label="Lyrics"
+      >
+        {lines.map((line, i) => {
+          const distance = Math.abs(i - active)
+          return (
+            <button
+              key={i}
+              type="button"
+              data-line={i}
+              aria-current={i === active ? "true" : undefined}
+              onClick={() => onSeek(Math.max(0, line.time + offset))}
+              className={`lyrics-line ${i === active ? "is-active" : ""} ${
+                distance >= 2 ? "is-far" : ""
+              } ${i < active ? "is-passed" : ""}`}
+            >
+              {line.text || "♪"}
+            </button>
+          )
+        })}
+      </div>
+
+      {!autoScroll && (
+        <button type="button" className="lyrics-jump" onClick={resumeAutoScroll}>
+          Jump to current
+        </button>
+      )}
+
+      <div className="lyrics-offset">
+        <button
+          type="button"
+          aria-label="Shift lyrics half a second earlier"
+          onClick={() => onOffsetChange(Math.round((offset - 0.5) * 10) / 10)}
+        >
+          −
+        </button>
+        <span aria-live="off">
+          {offset === 0 ? "Sync" : `${offset > 0 ? "+" : ""}${offset.toFixed(1)}s`}
+        </span>
+        <button
+          type="button"
+          aria-label="Shift lyrics half a second later"
+          onClick={() => onOffsetChange(Math.round((offset + 0.5) * 10) / 10)}
+        >
+          +
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function CircularCover({
+  trackId,
+  playing,
+  progress,
+  ready,
+}: {
+  trackId: string | undefined
+  playing: boolean
+  progress: number
+  ready: boolean
+}) {
+  const [src, setSrc] = useState<string | null>(null)
+  const [loaded, setLoaded] = useState(false)
+
+  useEffect(() => {
+    setLoaded(false)
+    setSrc(trackId ? coverArt(trackId) : null)
+  }, [trackId])
+
+  // r is in viewBox units; the ring sits just inside the 100x100 box.
+  const R = 47
+  const circumference = 2 * Math.PI * R
+  const offset = circumference * (1 - clamp(progress, 0, 100) / 100)
+
+  return (
+    <div className={`disc-wrap ${playing ? "is-playing" : ""}`}>
+      <span className="disc-halo" />
+
+      <svg className="disc-ring" viewBox="0 0 100 100" aria-hidden="true">
+        <defs>
+          <linearGradient id="discGrad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="var(--accent-soft)" />
+            <stop offset="100%" stopColor="var(--accent)" />
+          </linearGradient>
+        </defs>
+        <circle
+          className="disc-ring__track"
+          cx="50"
+          cy="50"
+          r={R}
+          fill="none"
+          strokeWidth="2.5"
+        />
+        <circle
+          className="disc-ring__value"
+          cx="50"
+          cy="50"
+          r={R}
+          fill="none"
+          strokeWidth="2.5"
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+        />
+      </svg>
+
+      <div className="disc-plate">
+        <div className="disc-groove">
+          {(!loaded || !ready) && (
+            <span className="disc-skeleton" aria-hidden="true" />
+          )}
+          {src && (
+            <img
+              key={src}
+              src={src}
+              alt=""
+              draggable={false}
+              className="disc-art"
+              style={{ opacity: loaded ? 1 : 0 }}
+              onLoad={(e) => {
+                // maxresdefault 404s render as a 120x90 grey placeholder.
+                if (e.currentTarget.naturalWidth <= 120 && trackId) {
+                  setSrc(coverArtFallback(trackId))
+                  return
+                }
+                setLoaded(true)
+              }}
+              onError={() => {
+                if (trackId && src !== coverArtFallback(trackId))
+                  setSrc(coverArtFallback(trackId))
+              }}
+            />
+          )}
+          <span className="disc-sheen" aria-hidden="true" />
+          <span className="disc-spindle" aria-hidden="true" />
+        </div>
+      </div>
     </div>
   )
 }
@@ -1126,10 +1569,8 @@ function SearchModal({
   onAdd,
   onPlay,
   inputRef,
-  playlists,
   /** Owned by App so the opener can focus it inside the click gesture. */
 }: {
-  playlists: SavedPlaylist[]
   open: boolean
   onClose: () => void
   query: string
@@ -1143,11 +1584,6 @@ function SearchModal({
   onPlay: (t: Track) => void
   inputRef: React.RefObject<HTMLInputElement | null>
 }) {
-  const suggestions = usePlaylistSuggestions(open && !query.trim(), playlists, SEARCH_PROXY)
-  const showingSuggestions = !query.trim()
-  const visibleResults = showingSuggestions ? suggestions.songs : results
-  const visibleLoading = showingSuggestions ? suggestions.loading : loading
-  const visibleError = showingSuggestions ? suggestions.error : error
   const panelRef = useRef<HTMLDivElement | null>(null)
   // The bottom-sheet must track the *visual* viewport: iOS shrinks it when
   // the soft keyboard opens but leaves fixed/layout-viewport elements at
@@ -1246,7 +1682,7 @@ function SearchModal({
               Search YouTube
             </p>
             <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
-              Find embeddable music videos and add them to your queue.
+              Add anything to your queue — it plays as audio.
             </p>
           </div>
           <IconButton label="Close search" onClick={onClose} size={44}>
@@ -1264,11 +1700,7 @@ function SearchModal({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault()
-                if (e.nativeEvent.isComposing || e.keyCode === 229) return
-                onSearch()
-              }
+              if (e.key === "Enter") onSearch()
             }}
             placeholder="Songs, artists, albums…"
             enterKeyHint="search"
@@ -1296,26 +1728,19 @@ function SearchModal({
           </button>
         </div>
 
-        {showingSuggestions && (
-          <div className="mt-4" style={{ color: "var(--text-muted)" }}>
-            <h2 className="text-sm font-bold" style={{ color: "var(--text-strong)" }}>Suggested for you</h2>
-            <p className="mt-1 text-xs">Based on artists in your saved playlists.</p>
-          </div>
-        )}
-
-        {visibleError && (
+        {error && (
           <p
             className="neu-inset mt-3 rounded-xl px-4 py-3 text-xs leading-relaxed"
             role="status"
             aria-live="polite"
             style={{ color: "var(--danger)" }}
           >
-            {visibleError}
+            {error}
           </p>
         )}
 
         <div className="soft-scroll -mx-1 mt-3 min-h-0 flex-1 space-y-2.5 overflow-y-auto px-1 pb-1">
-          {visibleLoading &&
+          {loading &&
             [0, 1, 2, 3].map((i) => (
               <div
                 key={i}
@@ -1340,21 +1765,17 @@ function SearchModal({
               </div>
             ))}
 
-          {!visibleLoading && visibleResults.length === 0 && !visibleError && (
+          {!loading && results.length === 0 && !error && (
             <div
               className="neu-inset rounded-2xl px-5 py-8 text-center text-sm"
               style={{ color: "var(--text-muted)" }}
             >
-              {showingSuggestions
-                ? suggestions.hasPlaylists
-                  ? "No new suggestions yet. Try searching for a song."
-                  : "Save a playlist to discover more songs from your favorite artists."
-                : "Search for a song, then add it to your queue."}
+              Search for a song, then add it to your queue.
             </div>
           )}
 
-          {!visibleLoading &&
-            visibleResults.map((result, i) => {
+          {!loading &&
+            results.map((result, i) => {
               const already = isQueued(result.id)
               return (
                 <div
@@ -1411,6 +1832,108 @@ function SearchModal({
               )
             })}
         </div>
+      </div>
+    </div>
+  )
+}
+
+/* ---- Sticky mini player (mobile) ------------------------------------ */
+
+function MiniPlayer({
+  track,
+  playing,
+  progress,
+  onToggle,
+  onNext,
+  onPrev,
+  onExpand,
+}: {
+  track: Track | undefined
+  playing: boolean
+  progress: number
+  onToggle: () => void
+  onNext: () => void
+  onPrev: () => void
+  onExpand: () => void
+}) {
+  if (!track) return null
+  return (
+    <div className="mini-player fixed inset-x-0 bottom-0 z-40 px-3 pb-3 lg:hidden">
+      <div
+        className="neu flex items-center gap-2 rounded-2xl p-2 pr-2.5"
+        style={{ background: "var(--panel-raised)" }}
+      >
+        <button
+          type="button"
+          onClick={onExpand}
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 text-left"
+          aria-label={`Now playing ${track.title}. Scroll to the player.`}
+        >
+          <span className="relative grid h-11 w-11 shrink-0 place-items-center">
+            <svg
+              viewBox="0 0 40 40"
+              className="absolute inset-0 h-full w-full -rotate-90"
+              aria-hidden="true"
+            >
+              <circle
+                cx="20"
+                cy="20"
+                r="18.5"
+                fill="none"
+                stroke="var(--sh-dark)"
+                strokeWidth="2"
+              />
+              <circle
+                cx="20"
+                cy="20"
+                r="18.5"
+                fill="none"
+                stroke="var(--accent)"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeDasharray={2 * Math.PI * 18.5}
+                strokeDashoffset={
+                  2 * Math.PI * 18.5 * (1 - clamp(progress, 0, 100) / 100)
+                }
+              />
+            </svg>
+            <img
+              src={rowThumb(track.id)}
+              alt=""
+              className={`mini-art h-8 w-8 ${playing ? "is-spinning" : ""}`}
+              draggable={false}
+            />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span
+              className="block truncate text-[0.8rem] font-semibold"
+              style={{ color: "var(--text-strong)" }}
+            >
+              {track.title}
+            </span>
+            <span
+              className="block truncate text-[0.7rem]"
+              style={{ color: "var(--text-muted)" }}
+            >
+              {track.artist}
+            </span>
+          </span>
+        </button>
+
+        <IconButton label="Previous track" onClick={onPrev} size={44}>
+          <Icon.Prev size={17} />
+        </IconButton>
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-label={playing ? "Pause" : "Play"}
+          className="accent-btn grid h-12 w-12 shrink-0 cursor-pointer place-items-center rounded-full"
+        >
+          {playing ? <Icon.Pause size={18} /> : <Icon.Play size={18} />}
+        </button>
+        <IconButton label="Next track" onClick={onNext} size={44}>
+          <Icon.Next size={17} />
+        </IconButton>
       </div>
     </div>
   )
@@ -1479,11 +2002,6 @@ function Toast({
  * ===================================================================== */
 
 export default function App() {
-  const path = window.location.pathname
-  return isLegalPath(path) ? <LegalPage path={path} /> : <TugtogPlayerApp />
-}
-
-function TugtogPlayerApp() {
   const [saved] = useState<Persisted>(loadPersisted)
 
   const [theme, setTheme] = useState<Theme>(() => initialTheme(saved))
@@ -1494,7 +2012,7 @@ function TugtogPlayerApp() {
   // Array.isArray, not `.length`: an empty saved queue is a deliberate user
   // state ("I deleted everything"), not a missing one. Using truthiness here
   // resurrected the starter list on the next visit.
-  const [tracks, setTracks] = useState<Track[]>(() =>
+  const [tracks, setTracks] = useState<Track[]>(
     Array.isArray(saved.tracks) ? saved.tracks : STARTER,
   )
   const [savedPlaylists, setSavedPlaylists] = useState<SavedPlaylist[]>(() =>
@@ -1518,7 +2036,7 @@ function TugtogPlayerApp() {
     saved.currentId &&
       (saved.tracks ?? STARTER).some((t) => t.id === saved.currentId)
       ? saved.currentId
-      : ((Array.isArray(saved.tracks) ? saved.tracks[0]?.id : STARTER[0]?.id) ??
+      : ((Array.isArray(saved.tracks) ? saved.tracks[0]?.id : STARTER[0].id) ??
           null),
   )
   const [playing, setPlaying] = useState(false)
@@ -1533,20 +2051,21 @@ function TugtogPlayerApp() {
   const [repeat, setRepeat] = useState<Repeat>(saved.repeat ?? "off")
   const [shuffle, setShuffle] = useState<boolean>(saved.shuffle ?? false)
   const [dragId, setDragId] = useState<string | null>(null)
+  const [stage, setStage] = useState<Stage>("art")
+  const showVideo = stage === "video"
+  const [lyrics, setLyrics] = useState<Lyrics | null>(null)
+  const [lyricsLoading, setLyricsLoading] = useState(false)
+  const [lyricOffsets, setLyricOffsets] = useState<Record<string, number>>(
+    () => saved.lyricOffsets ?? {},
+  )
+  const [showMini, setShowMini] = useState(false)
   const [toast, setToast] = useState<ToastState | null>(null)
-
-  /* ---- remote session state ---- */
-  const [clientId] = useState(getOrCreateClientId)
-  const [sessionRole, setSessionRole] = useState<SessionRole>(null)
-  const [sessionCode, setSessionCode] = useState<string | null>(null)
-  const [sessionConnectedClients, setSessionConnectedClients] = useState(0)
-  const [lastRemoteAction, setLastRemoteAction] = useState<string | null>(null)
-  const [sessionOpen, setSessionOpen] = useState(false)
-  const [sessionBusy, setSessionBusy] = useState(false)
-  const [sessionError, setSessionError] = useState("")
 
   const playerRef = useRef<any>(null)
   const mountRef = useRef<HTMLDivElement | null>(null)
+  const transportRef = useRef<HTMLDivElement | null>(null)
+  const playerCardRef = useRef<HTMLElement | null>(null)
+  const backdropRef = useRef<HTMLDivElement | null>(null)
   const tick = useRef<number | null>(null)
   const searchInputRef = useRef<HTMLInputElement | null>(null)
   // What the *user* asked for. `playing` mirrors the YouTube player, which a
@@ -1555,25 +2074,10 @@ function TugtogPlayerApp() {
   const wakeLockRef = useRef<any>(null)
   const searchTriggerRef = useRef<HTMLElement | null>(null)
   const playlistsTriggerRef = useRef<HTMLElement | null>(null)
-  const sessionTriggerRef = useRef<HTMLElement | null>(null)
   const toastSeq = useRef(0)
   // Tracks selected during the current shuffle cycle. Keeping this separate
   // from React state lets consecutive player events update it synchronously.
   const shufflePlayedRef = useRef<Set<string>>(new Set())
-
-  const sessionRoleRef = useRef<SessionRole>(null)
-  sessionRoleRef.current = sessionRole
-  const sessionCodeRef = useRef<string | null>(null)
-  sessionCodeRef.current = sessionCode
-  const sessionRevRef = useRef(1)
-  const processedCommandIdsRef = useRef<Set<string>>(new Set())
-  const ackedCommandListRef = useRef<string[]>([])
-  const unackedControllerCommandsRef = useRef<Map<string, number>>(new Map())
-  const broadcastRef = useRef<ReturnType<typeof openSessionBroadcast> | null>(
-    null,
-  )
-  const broadcastClientsRef = useRef<Map<string, number>>(new Map())
-  const volumeCmdThrottleRef = useRef<number>(0)
 
   const currentIdx = currentId
     ? tracks.findIndex((candidate) => candidate.id === currentId)
@@ -1588,28 +2092,6 @@ function TugtogPlayerApp() {
       setToast({ id: toastSeq.current, message, action })
     },
     [],
-  )
-
-  const sendRemoteCommand = useCallback(
-    (payload: SessionCommandPayload) => {
-      const role = sessionRoleRef.current
-      const code = sessionCodeRef.current
-      if (role !== "controller" || !code) return
-      const cmd: SessionCommand = {
-        id: createCommandId(),
-        clientId,
-        createdAt: Date.now(),
-        payload,
-      }
-      unackedControllerCommandsRef.current.set(cmd.id, Date.now())
-      broadcastRef.current?.post({
-        type: "command",
-        code,
-        command: cmd,
-      })
-      void apiSendCommand(code, clientId, cmd)
-    },
-    [clientId],
   )
 
   const filtered = useMemo(() => {
@@ -1640,7 +2122,6 @@ function TugtogPlayerApp() {
 
   /* ---- persistence ---- */
   useEffect(() => {
-    if (sessionRole === "controller") return
     const payload: Persisted = {
       tracks,
       currentId,
@@ -1650,6 +2131,7 @@ function TugtogPlayerApp() {
       repeat,
       shuffle,
       keepAwake,
+      lyricOffsets,
     }
     try {
       localStorage.setItem(STORE_KEY, JSON.stringify(payload))
@@ -1657,7 +2139,6 @@ function TugtogPlayerApp() {
       /* storage full or blocked — playback is unaffected */
     }
   }, [
-    sessionRole,
     tracks,
     currentId,
     savedPlaylists,
@@ -1666,6 +2147,7 @@ function TugtogPlayerApp() {
     repeat,
     shuffle,
     keepAwake,
+    lyricOffsets,
   ])
 
   /* live refs so the YT event handlers always see fresh state */
@@ -1681,7 +2163,7 @@ function TugtogPlayerApp() {
     if (shuffle && currentId) shufflePlayedRef.current.add(currentId)
   }, [shuffle])
 
-  const advanceLocal = useCallback((delta: number) => {
+  const advance = useCallback((delta: number) => {
     const { tracks: ts, currentId: cid, shuffle: sh } = stateRef.current
     if (!ts.length) return
     const idx = ts.findIndex((t) => t.id === cid)
@@ -1705,24 +2187,9 @@ function TugtogPlayerApp() {
     setCurrentId(nextId)
     intendedPlayRef.current = true
     setPlaying(true)
-    if (nextId === cid && sessionRoleRef.current !== "controller") {
-      playerRef.current?.seekTo?.(0, true)
-      playerRef.current?.playVideo?.()
-    }
   }, [])
 
-  const advance = useCallback(
-    (delta: number) => {
-      advanceLocal(delta)
-      if (sessionRoleRef.current === "controller") {
-        sendRemoteCommand({ type: "advance", delta })
-      }
-    },
-    [advanceLocal, sendRemoteCommand],
-  )
-
   const handleEnded = useCallback(() => {
-    if (sessionRoleRef.current === "controller") return
     const {
       tracks: ts,
       currentId: cid,
@@ -1740,8 +2207,8 @@ function TugtogPlayerApp() {
       setPlaying(false)
       return
     }
-    advanceLocal(1)
-  }, [advanceLocal])
+    advance(1)
+  }, [advance])
 
   /* ---- build the player once ---- */
   useEffect(() => {
@@ -1751,10 +2218,10 @@ function TugtogPlayerApp() {
       playerRef.current = new YT.Player(mountRef.current, {
         videoId: currentId ?? undefined,
         playerVars: {
-          controls: 1,
           playsinline: 1,
           rel: 0,
-          origin: window.location.origin,
+          modestbranding: 1,
+          iv_load_policy: 3,
         },
         events: {
           onReady: (e: any) => {
@@ -1788,12 +2255,6 @@ function TugtogPlayerApp() {
     if (tick.current) window.clearInterval(tick.current)
     if (playing) {
       tick.current = window.setInterval(() => {
-        if (sessionRoleRef.current === "controller") {
-          setTime((prev) =>
-            duration > 0 ? Math.min(duration, prev + 0.25) : prev + 0.25,
-          )
-          return
-        }
         const p = playerRef.current
         if (!p?.getCurrentTime) return
         setTime(p.getCurrentTime() || 0)
@@ -1803,19 +2264,17 @@ function TugtogPlayerApp() {
     return () => {
       if (tick.current) window.clearInterval(tick.current)
     }
-  }, [playing, duration])
+  }, [playing])
 
   /* ---- load new video when the current track changes ---- */
   const didInit = useRef(false)
   useEffect(() => {
-    if (sessionRole === "controller") return
     const p = playerRef.current
     if (!ready || !p || !track) return
     if (!didInit.current) {
-      // First ready: cue paused unless the user or remote controller explicitly started play.
+      // First ready: cue paused. Never autoplay on load.
       didInit.current = true
-      if (intendedPlayRef.current) p.loadVideoById(track.id)
-      else p.cueVideoById(track.id)
+      p.cueVideoById(track.id)
       return
     }
     if (intendedPlayRef.current) p.loadVideoById(track.id)
@@ -1824,62 +2283,116 @@ function TugtogPlayerApp() {
     setScrubTime(null)
     setDuration(0)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [track?.id, ready, sessionRole])
+  }, [track?.id, ready])
 
   useEffect(() => {
-    if (sessionRole === "controller") return
     const p = playerRef.current
     if (!p?.setVolume) return
     p.setVolume(muted ? 0 : volume)
-  }, [volume, muted, sessionRole])
+  }, [volume, muted])
 
   const toggle = useCallback(() => {
-    if (sessionRoleRef.current === "controller") {
-      const nextPlaying = !playing
-      if (nextPlaying && !currentId && tracks.length > 0) {
-        setCurrentId(tracks[0].id)
-      }
-      setPlaying(nextPlaying)
-      sendRemoteCommand({ type: "setPlaying", playing: nextPlaying })
-      return
-    }
     const p = playerRef.current
-    if (!playing && !currentId && tracks.length > 0) {
-      setCurrentId(tracks[0].id)
-      intendedPlayRef.current = true
-      setPlaying(true)
-      return
-    }
     if (!p) return
     if (playing) {
       intendedPlayRef.current = false
-      setPlaying(false)
-      p.pauseVideo?.()
+      p.pauseVideo()
     } else {
       intendedPlayRef.current = true
-      setPlaying(true)
-      p.playVideo?.()
+      p.playVideo()
     }
-  }, [playing, currentId, tracks, sendRemoteCommand])
+  }, [playing])
 
-  const seekTo = useCallback(
-    (seconds: number) => {
-      if (sessionRoleRef.current === "controller") {
-        setTime(seconds)
-        setScrubTime(null)
-        sendRemoteCommand({ type: "seekTo", seconds })
-        return
+  const seekTo = useCallback((seconds: number) => {
+    const p = playerRef.current
+    if (!p?.seekTo) return
+    p.seekTo(seconds, true)
+    setTime(seconds)
+    setScrubTime(null)
+  }, [])
+
+  /* ---- OS / lock-screen media controls (the "background" experience) ---- */
+  useEffect(() => {
+    if (!("mediaSession" in navigator) || !track) return
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: track.title,
+        artist: track.artist,
+        album: "Youtugtog",
+        artwork: [
+          { src: rowThumb(track.id), sizes: "320x180", type: "image/jpeg" },
+          { src: coverArt(track.id), sizes: "1280x720", type: "image/jpeg" },
+        ],
+      })
+    } catch {
+      /* MediaMetadata unsupported */
+    }
+  }, [track])
+
+  useEffect(() => {
+    if (!("mediaSession" in navigator)) return
+    const ms = navigator.mediaSession
+    const handlers: Array<[MediaSessionAction, MediaSessionActionHandler | null]> =
+      [
+        ["play", () => playerRef.current?.playVideo?.()],
+        ["pause", () => playerRef.current?.pauseVideo?.()],
+        ["previoustrack", () => advance(-1)],
+        ["nexttrack", () => advance(1)],
+        [
+          "seekbackward",
+          () =>
+            seekTo(
+              Math.max(0, (playerRef.current?.getCurrentTime?.() ?? 0) - 10),
+            ),
+        ],
+        [
+          "seekforward",
+          () => seekTo((playerRef.current?.getCurrentTime?.() ?? 0) + 10),
+        ],
+        ["seekto", (d) => typeof d.seekTime === "number" && seekTo(d.seekTime)],
+      ]
+    for (const [action, handler] of handlers) {
+      try {
+        ms.setActionHandler(action, handler)
+      } catch {
+        /* action unsupported in this browser */
       }
-      const p = playerRef.current
-      if (!p?.seekTo) return
-      p.seekTo(seconds, true)
-      setTime(seconds)
-      setScrubTime(null)
-    },
-    [sendRemoteCommand],
-  )
+    }
+    return () => {
+      for (const [action] of handlers) {
+        try {
+          ms.setActionHandler(action, null)
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+  }, [advance, seekTo])
 
-  /* Keep the screen awake only while the official player is visible. */
+  useEffect(() => {
+    if (!("mediaSession" in navigator)) return
+    navigator.mediaSession.playbackState = playing ? "playing" : "paused"
+    if (!duration || !Number.isFinite(duration)) return
+    try {
+      navigator.mediaSession.setPositionState({
+        duration,
+        position: clamp(time, 0, duration),
+        playbackRate: 1,
+      })
+    } catch {
+      /* position state unsupported */
+    }
+  }, [playing, time, duration])
+
+  /* ---- staying alive in the background -----------------------------
+   * Mobile browsers suspend media for a backgrounded or locked page, and
+   * YouTube embeds are no exception — that is an OS policy a web page
+   * cannot opt out of. Two things are actually within reach:
+   *   1. an optional Screen Wake Lock, so the device stops auto-locking
+   *      mid-song in the first place;
+   *   2. resuming automatically when the user comes back, instead of
+   *      leaving them on a silently paused player.
+   */
   const releaseWakeLock = useCallback(() => {
     try {
       wakeLockRef.current?.release?.()
@@ -1909,43 +2422,87 @@ function TugtogPlayerApp() {
   useEffect(() => releaseWakeLock, [releaseWakeLock])
 
   useEffect(() => {
-    const pauseForHiddenSurface = () => {
-      if (sessionRoleRef.current === "host") return
-      intendedPlayRef.current = false
-      playerRef.current?.pauseVideo?.()
-      setPlaying(false)
-      releaseWakeLock()
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return
+      if (keepAwake && intendedPlayRef.current) void acquireWakeLock()
+      const p = playerRef.current
+      // 2 === PAUSED. Only resume if the pause came from the browser, not
+      // from the user deliberately pausing before switching away.
+      if (intendedPlayRef.current && p?.getPlayerState?.() === 2) {
+        p.playVideo?.()
+      }
     }
-    const onVisibilityChange = () => {
-      if (document.visibilityState !== "visible") pauseForHiddenSurface()
-    }
-    document.addEventListener("visibilitychange", onVisibilityChange)
-    window.addEventListener("pagehide", pauseForHiddenSurface)
-    return () => {
-      document.removeEventListener("visibilitychange", onVisibilityChange)
-      window.removeEventListener("pagehide", pauseForHiddenSurface)
-    }
-  }, [releaseWakeLock])
+    document.addEventListener("visibilitychange", onVisible)
+    return () => document.removeEventListener("visibilitychange", onVisible)
+  }, [keepAwake, acquireWakeLock])
 
-  // Search and playlist sheets cover the player. Pause first and require an
-  // explicit new play action after the sheet has closed.
+  /* ---- lyrics ------------------------------------------------------- *
+   * Fetched lazily the first time the Lyrics stage is opened for a track,
+   * then cached (including misses) so replaying never refetches. */
+  const getLiveTime = useCallback(
+    () => playerRef.current?.getCurrentTime?.() ?? 0,
+    [],
+  )
+
+  const lyricOffset = track ? (lyricOffsets[track.id] ?? 0) : 0
+  const setLyricOffset = useCallback(
+    (next: number) => {
+      if (!track) return
+      setLyricOffsets((prev) => ({ ...prev, [track.id]: next }))
+    },
+    [track],
+  )
+
   useEffect(() => {
-    if (sessionRole === "controller") return
-    if (!searchOpen && !playlistsOpen) return
-    intendedPlayRef.current = false
-    playerRef.current?.pauseVideo?.()
-    setPlaying(false)
-    releaseWakeLock()
-  }, [searchOpen, playlistsOpen, sessionRole, releaseWakeLock])
+    if (stage !== "lyrics" || !track) return
+    const cached = readLyricsCache()[track.id]
+    if (cached) {
+      setLyrics(cached)
+      setLyricsLoading(false)
+      return
+    }
+
+    const controller = new AbortController()
+    setLyricsLoading(true)
+    setLyrics(null)
+
+    fetchLyricsForTrack(track, duration, controller.signal)
+      .then((result) => {
+        if (controller.signal.aborted) return
+        setLyrics(result)
+        setLyricsLoading(false)
+      })
+      .catch((error) => {
+        if ((error as Error)?.name === "AbortError") return
+        setLyrics({ kind: "none" })
+        setLyricsLoading(false)
+      })
+
+    return () => controller.abort()
+    // duration is intentionally excluded: it settles shortly after load and
+    // re-running would refetch mid-song for no benefit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage, track?.id])
+
+  /* ---- show the mini player once the real transport scrolls away ---- */
+  useEffect(() => {
+    const el = transportRef.current
+    if (!el || typeof IntersectionObserver === "undefined") return
+    const io = new IntersectionObserver(
+      ([entry]) => setShowMini(!entry.isIntersecting),
+      { threshold: 0.1 },
+    )
+    io.observe(el)
+    return () => io.disconnect()
+  }, [])
 
   /* ---- search modal open/close ----------------------------------- *
    * iOS only raises the soft keyboard when .focus() runs inside the user
    * gesture. flushSync commits the modal to the DOM synchronously so the
    * input exists and can be focused before the tap handler returns. */
   const openSearch = useCallback(() => {
-    searchTriggerRef.current = document.activeElement as HTMLElement | null
+    searchTriggerRef.current = (document.activeElement as HTMLElement | null)
     setPlaylistsOpen(false)
-    setSessionOpen(false)
     flushSync(() => setSearchOpen(true))
     searchInputRef.current?.focus({ preventScroll: true })
   }, [])
@@ -1959,11 +2516,9 @@ function TugtogPlayerApp() {
   const openPlaylists = useCallback(
     (view: "library" | "save", preserveTrigger = false) => {
       if (!preserveTrigger) {
-        playlistsTriggerRef.current =
-          document.activeElement as HTMLElement | null
+        playlistsTriggerRef.current = document.activeElement as HTMLElement | null
       }
       setSearchOpen(false)
-      setSessionOpen(false)
       setPlaylistDefaultName(defaultPlaylistName())
       setPlaylistsView(view)
       setPlaylistsOpen(true)
@@ -1977,21 +2532,6 @@ function TugtogPlayerApp() {
     if (trigger?.isConnected) requestAnimationFrame(() => trigger.focus?.())
   }, [])
 
-  const openSessionModal = useCallback(() => {
-    sessionTriggerRef.current = document.activeElement as HTMLElement | null
-    setSearchOpen(false)
-    setPlaylistsOpen(false)
-    setSessionError("")
-    setSessionOpen(true)
-  }, [])
-
-  const closeSessionModal = useCallback(() => {
-    setSessionOpen(false)
-    setSessionError("")
-    const trigger = sessionTriggerRef.current
-    if (trigger?.isConnected) requestAnimationFrame(() => trigger.focus?.())
-  }, [])
-
   /* ---- global keyboard shortcuts ---- */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -2002,36 +2542,21 @@ function TugtogPlayerApp() {
         )
       )
         return
-      if (searchOpen || playlistsOpen || sessionOpen) return
+      if (searchOpen || playlistsOpen) return
       if (e.key === " " || e.key === "k") {
         e.preventDefault()
         toggle()
       } else if (e.key === "ArrowRight" && e.shiftKey) advance(1)
       else if (e.key === "ArrowLeft" && e.shiftKey) advance(-1)
-      else if (e.key === "m") {
-        setMuted((m) => {
-          const next = !m
-          if (sessionRoleRef.current === "controller") {
-            sendRemoteCommand({ type: "setMuted", muted: next })
-          }
-          return next
-        })
-      } else if (e.key === "/") {
+      else if (e.key === "m") setMuted((m) => !m)
+      else if (e.key === "/") {
         e.preventDefault()
         openSearch()
       }
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [
-    toggle,
-    advance,
-    searchOpen,
-    playlistsOpen,
-    sessionOpen,
-    openSearch,
-    sendRemoteCommand,
-  ])
+  }, [toggle, advance, searchOpen, playlistsOpen, openSearch])
 
   /* ---- queue operations ---- */
 
@@ -2043,10 +2568,6 @@ function TugtogPlayerApp() {
     setCurrentId(id)
     intendedPlayRef.current = true
     setPlaying(true)
-    if (sessionRoleRef.current === "controller") {
-      sendRemoteCommand({ type: "playTrack", id })
-      return
-    }
     playerRef.current?.playVideo?.()
   }
 
@@ -2061,9 +2582,7 @@ function TugtogPlayerApp() {
         setCurrentId(next[Math.min(index, next.length - 1)].id)
       } else if (id === currentId) {
         intendedPlayRef.current = false
-        if (sessionRoleRef.current !== "controller") {
-          playerRef.current?.stopVideo?.()
-        }
+        playerRef.current?.stopVideo?.()
         setCurrentId(null)
         setPlaying(false)
         setTime(0)
@@ -2072,28 +2591,16 @@ function TugtogPlayerApp() {
       }
       return next
     })
-    if (sessionRoleRef.current === "controller") {
-      sendRemoteCommand({ type: "deleteTrack", id })
-    }
     notify(`Removed “${removed.title}”`, {
       label: "Undo",
-      run: () => {
+      run: () =>
         setTracks((prev) => {
           if (prev.some((t) => t.id === removed.id)) return prev
           const next = [...prev]
           next.splice(Math.min(index, next.length), 0, removed)
           if (wasCurrent) setCurrentId(removed.id)
           return next
-        })
-        if (sessionRoleRef.current === "controller") {
-          sendRemoteCommand({
-            type: "restoreTrack",
-            track: removed,
-            index,
-            wasCurrent,
-          })
-        }
-      },
+        }),
     })
   }
 
@@ -2107,9 +2614,6 @@ function TugtogPlayerApp() {
       next.splice(to, 0, moved)
       return next
     })
-    if (sessionRoleRef.current === "controller") {
-      sendRemoteCommand({ type: "moveTrack", id, delta })
-    }
   }
 
   /** Patch a queued track in place once its real metadata arrives. */
@@ -2178,39 +2682,28 @@ function TugtogPlayerApp() {
       return
     }
     setTracks((prev) => [
-      { id, title: PENDING_TITLE, artist: "Fetching details…" },
       ...prev,
+      { id, title: PENDING_TITLE, artist: "Fetching details…" },
     ])
     if (!tracks.length) setCurrentId(id)
-    notify("Added to the top of your queue")
-    if (sessionRoleRef.current === "controller") {
-      sendRemoteCommand({ type: "addTrackById", id })
-    }
+    notify("Added to the end of your queue")
     void resolveTrackMeta(id)
   }
 
   const addSearchResult = (result: Track) => {
     if (tracks.some((t) => t.id === result.id)) return
-    setTracks((prev) => [result, ...prev])
+    setTracks((prev) => [...prev, result])
     if (!tracks.length) setCurrentId(result.id)
     notify(`Queued “${result.title}”`)
-    if (sessionRoleRef.current === "controller") {
-      sendRemoteCommand({ type: "addSearchResult", track: result })
-    }
   }
 
   const playSearchResult = (result: Track) => {
     if (!tracks.some((t) => t.id === result.id))
-      setTracks((prev) => [result, ...prev])
+      setTracks((prev) => [...prev, result])
     setCurrentId(result.id)
     intendedPlayRef.current = true
     setPlaying(true)
     setSearchOpen(false)
-    if (sessionRoleRef.current === "controller") {
-      sendRemoteCommand({ type: "playSearchResult", track: result })
-    } else if (result.id === currentId) {
-      playerRef.current?.playVideo?.()
-    }
   }
 
   const saveCurrentQueue = (name: string) => {
@@ -2225,9 +2718,6 @@ function TugtogPlayerApp() {
       savedAt: new Date().toISOString(),
     }
     setSavedPlaylists((prev) => [playlist, ...prev])
-    if (sessionRoleRef.current === "controller") {
-      sendRemoteCommand({ type: "saveCurrentQueue", name: trimmedName })
-    }
     closePlaylists()
     notify(`Saved “${trimmedName}”`, {
       label: "View",
@@ -2251,11 +2741,7 @@ function TugtogPlayerApp() {
     setCurrentId(first.id)
     intendedPlayRef.current = true
     setPlaying(true)
-    if (sessionRoleRef.current === "controller") {
-      sendRemoteCommand({ type: "playPlaylist", playlist })
-    } else if (first.id === currentId) {
-      playerRef.current?.loadVideoById?.(first.id)
-    }
+    if (first.id === currentId) playerRef.current?.loadVideoById?.(first.id)
     closePlaylists()
     notify(`Playing “${playlist.name}”`, {
       label: "Undo",
@@ -2264,15 +2750,6 @@ function TugtogPlayerApp() {
         setCurrentId(previousCurrentId)
         intendedPlayRef.current = previousPlaying
         setPlaying(previousPlaying)
-        if (sessionRoleRef.current === "controller") {
-          sendRemoteCommand({
-            type: "restoreQueue",
-            tracks: previousTracks,
-            currentId: previousCurrentId,
-            playing: previousPlaying,
-          })
-          return
-        }
         const player = playerRef.current
         if (!previousCurrentId) player?.stopVideo?.()
         else if (previousCurrentId === first.id) {
@@ -2294,14 +2771,11 @@ function TugtogPlayerApp() {
       notify("All songs are already in your queue")
       return
     }
-    setTracks((prev) => [...additions, ...prev])
+    setTracks((prev) => [...prev, ...additions])
     if (!tracks.length) {
       intendedPlayRef.current = false
       setCurrentId(additions[0].id)
       setPlaying(false)
-    }
-    if (sessionRoleRef.current === "controller") {
-      sendRemoteCommand({ type: "appendPlaylist", playlist })
     }
     notify(
       `Added ${additions.length} ${
@@ -2313,60 +2787,22 @@ function TugtogPlayerApp() {
   const deleteSavedPlaylist = (playlist: SavedPlaylist) => {
     const index = savedPlaylists.findIndex((item) => item.id === playlist.id)
     setSavedPlaylists((prev) => prev.filter((item) => item.id !== playlist.id))
-    if (sessionRoleRef.current === "controller") {
-      sendRemoteCommand({ type: "deletePlaylist", id: playlist.id })
-    }
     notify(`Deleted “${playlist.name}”`, {
       label: "Undo",
-      run: () => {
+      run: () =>
         setSavedPlaylists((prev) => {
           if (prev.some((item) => item.id === playlist.id)) return prev
           const next = [...prev]
           next.splice(Math.max(0, index), 0, playlist)
           return next
-        })
-        if (sessionRoleRef.current === "controller") {
-          sendRemoteCommand({
-            type: "restorePlaylist",
-            playlist,
-            index: Math.max(0, index),
-          })
-        }
-      },
+        }),
     })
-  }
-
-  const createSavedPlaylist = (name: string, songs: Track[]) => {
-    const trimmedName = name.trim()
-    if (!trimmedName || !songs.length) return
-    const clonedSongs = songs.map((song) => ({ ...song }))
-    const playlist: SavedPlaylist = {
-      id:
-        globalThis.crypto?.randomUUID?.() ??
-        `playlist-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      name: trimmedName,
-      tracks: clonedSongs,
-      savedAt: new Date().toISOString(),
-    }
-    setSavedPlaylists((items) => [playlist, ...items])
-    if (sessionRoleRef.current === "controller") {
-      sendRemoteCommand({
-        type: "createPlaylist",
-        name: trimmedName,
-        tracks: clonedSongs,
-      })
-    }
-    notify(`Created “${trimmedName}”`)
   }
 
   const updateSavedPlaylist = (playlist: SavedPlaylist) => {
     setSavedPlaylists((prev) =>
       prev.map((item) => (item.id === playlist.id ? playlist : item)),
     )
-    if (sessionRoleRef.current === "controller") {
-      sendRemoteCommand({ type: "updatePlaylist", playlist })
-    }
-    notify(`Updated “${playlist.name}”`)
   }
 
   const searchYouTube = useCallback(async () => {
@@ -2395,12 +2831,21 @@ function TugtogPlayerApp() {
             : message,
         )
       }
-      const items: VideoSummary[] = Array.isArray(json.items) ? json.items : []
-      const results: Track[] = items.map((item) => ({
-        id: item.id,
-        title: item.title,
-        artist: item.channelTitle,
-      }))
+      const items = Array.isArray(json.items) ? json.items : []
+      const results: Track[] = items
+        .map(
+          (item: {
+            id?: { videoId?: string }
+            snippet?: { title?: string; channelTitle?: string }
+          }) => ({
+            id: item.id?.videoId,
+            title: decodeEntities(item.snippet?.title ?? "Untitled"),
+            artist: decodeEntities(
+              item.snippet?.channelTitle ?? "Unknown channel",
+            ),
+          }),
+        )
+        .filter((item: { id?: string }): item is Track => Boolean(item.id))
       setSearchResults(results)
       if (results.length === 0)
         setSearchError("No videos found for that search.")
@@ -2421,25 +2866,55 @@ function TugtogPlayerApp() {
     dragIdRef.current = dragId
   }, [dragId])
 
-  const reorderTo = useCallback(
-    (targetId: string) => {
-      const fromId = dragIdRef.current
-      if (!fromId || fromId === targetId) return
-      setTracks((prev) => {
-        const from = prev.findIndex((t) => t.id === fromId)
-        const to = prev.findIndex((t) => t.id === targetId)
-        if (from < 0 || to < 0 || from === to) return prev
-        const next = [...prev]
-        const [moved] = next.splice(from, 1)
-        next.splice(to, 0, moved)
-        return next
-      })
-      if (sessionRoleRef.current === "controller") {
-        sendRemoteCommand({ type: "reorderTo", dragId: fromId, targetId })
+  /* ---- scroll blur fallback for mobile ---- */
+  useEffect(() => {
+    if (
+      typeof CSS !== "undefined" &&
+      !CSS.supports("(animation-timeline: scroll()) and (animation-range: 0% 100%)")
+    ) {
+      const handleScroll = () => {
+        if (window.innerWidth >= 600) {
+          if (playerCardRef.current) {
+            playerCardRef.current.style.filter = ""
+          }
+          if (backdropRef.current) {
+            backdropRef.current.style.opacity = "0"
+          }
+          return
+        }
+
+        const scrollY = window.scrollY
+        const maxScroll = 300
+        const progress = Math.min(1, Math.max(0, scrollY / maxScroll))
+
+        if (playerCardRef.current) {
+          playerCardRef.current.style.filter = `blur(${progress * 8}px)`
+        }
+        if (backdropRef.current) {
+          backdropRef.current.style.opacity = `${progress}`
+        }
       }
-    },
-    [sendRemoteCommand],
-  )
+
+      window.addEventListener("scroll", handleScroll, { passive: true })
+      window.addEventListener("resize", handleScroll, { passive: true })
+      return () => {
+        window.removeEventListener("scroll", handleScroll)
+        window.removeEventListener("resize", handleScroll)
+      }
+    }
+  }, [])
+
+  const reorderTo = useCallback((targetId: string) => {
+    setTracks((prev) => {
+      const from = prev.findIndex((t) => t.id === dragIdRef.current)
+      const to = prev.findIndex((t) => t.id === targetId)
+      if (from < 0 || to < 0 || from === to) return prev
+      const next = [...prev]
+      const [moved] = next.splice(from, 1)
+      next.splice(to, 0, moved)
+      return next
+    })
+  }, [])
 
   const startDrag = useCallback(
     (id: string) => {
@@ -2462,770 +2937,14 @@ function TugtogPlayerApp() {
     [reorderTo],
   )
 
-  const cycleRepeat = () => {
-    setRepeat((r) => {
-      const next: Repeat = r === "off" ? "all" : r === "all" ? "one" : "off"
-      if (sessionRoleRef.current === "controller") {
-        sendRemoteCommand({ type: "setRepeat", repeat: next })
-      }
-      return next
-    })
-  }
+  const cycleRepeat = () =>
+    setRepeat((r) => (r === "off" ? "all" : r === "all" ? "one" : "off"))
   const repeatLabel =
     repeat === "off"
       ? "Repeat off"
       : repeat === "all"
         ? "Repeat all"
         : "Repeat one"
-
-  /* ---- remote session orchestration ---- */
-
-  const buildSnapshot = useCallback((): SessionSnapshot => {
-    sessionRevRef.current += 1
-    return {
-      tracks,
-      currentId,
-      playing,
-      buffering,
-      time,
-      duration,
-      volume,
-      muted,
-      repeat,
-      shuffle,
-      playlists: savedPlaylists,
-      updatedAt: Date.now(),
-      rev: sessionRevRef.current,
-    }
-  }, [
-    tracks,
-    currentId,
-    playing,
-    buffering,
-    time,
-    duration,
-    volume,
-    muted,
-    repeat,
-    shuffle,
-    savedPlaylists,
-  ])
-  const buildSnapshotRef = useRef(buildSnapshot)
-  buildSnapshotRef.current = buildSnapshot
-
-  const applyHostSnapshot = useCallback(
-    (snapshot: SessionSnapshot, ackCommandIds?: string[]) => {
-      const now = Date.now()
-      if (ackCommandIds?.length) {
-        for (const id of ackCommandIds) {
-          unackedControllerCommandsRef.current.delete(id)
-        }
-      }
-      for (const [id, sentAt] of unackedControllerCommandsRef.current.entries()) {
-        if (now - sentAt > 2500) {
-          unackedControllerCommandsRef.current.delete(id)
-        }
-      }
-      if (unackedControllerCommandsRef.current.size > 0) {
-        return
-      }
-      setTracks(snapshot.tracks)
-      setCurrentId(snapshot.currentId)
-      setPlaying(snapshot.playing)
-      setBuffering(snapshot.buffering)
-      setTime(snapshot.time)
-      setDuration(snapshot.duration)
-      setVolume(snapshot.volume)
-      setMuted(snapshot.muted)
-      setRepeat(snapshot.repeat)
-      setShuffle(snapshot.shuffle)
-      setSavedPlaylists(snapshot.playlists)
-    },
-    [],
-  )
-
-  const executeRemoteCommand = useCallback(
-    (cmd: SessionCommand) => {
-      if (processedCommandIdsRef.current.has(cmd.id)) return
-      processedCommandIdsRef.current.add(cmd.id)
-      ackedCommandListRef.current = [
-        ...ackedCommandListRef.current.slice(-79),
-        cmd.id,
-      ]
-
-      const desc = describeRemoteCommand(cmd.payload)
-      setLastRemoteAction(desc.label)
-      if (desc.toast) notify(desc.toast)
-
-      const payload = cmd.payload
-      switch (payload.type) {
-        case "togglePlay": {
-          const p = playerRef.current
-          if (playing) {
-            intendedPlayRef.current = false
-            setPlaying(false)
-            p?.pauseVideo?.()
-          } else {
-            if (!stateRef.current.currentId && stateRef.current.tracks.length) {
-              setCurrentId(stateRef.current.tracks[0].id)
-            }
-            setSearchOpen(false)
-            setPlaylistsOpen(false)
-            setSessionOpen(false)
-            intendedPlayRef.current = true
-            setPlaying(true)
-            p?.playVideo?.()
-          }
-          break
-        }
-        case "setPlaying": {
-          const p = playerRef.current
-          if (payload.playing) {
-            if (!stateRef.current.currentId && stateRef.current.tracks.length) {
-              setCurrentId(stateRef.current.tracks[0].id)
-            }
-            setSearchOpen(false)
-            setPlaylistsOpen(false)
-            setSessionOpen(false)
-            intendedPlayRef.current = true
-            setPlaying(true)
-            p?.playVideo?.()
-          } else {
-            intendedPlayRef.current = false
-            setPlaying(false)
-            p?.pauseVideo?.()
-          }
-          break
-        }
-        case "playTrack": {
-          setSearchOpen(false)
-          setPlaylistsOpen(false)
-          setSessionOpen(false)
-          const wasSame = payload.id === stateRef.current.currentId
-          setCurrentId(payload.id)
-          intendedPlayRef.current = true
-          setPlaying(true)
-          if (wasSame) playerRef.current?.playVideo?.()
-          break
-        }
-        case "advance": {
-          setSearchOpen(false)
-          setPlaylistsOpen(false)
-          setSessionOpen(false)
-          advanceLocal(payload.delta)
-          break
-        }
-        case "seekTo": {
-          const p = playerRef.current
-          p?.seekTo?.(payload.seconds, true)
-          setTime(payload.seconds)
-          setScrubTime(null)
-          break
-        }
-        case "setVolume": {
-          if (typeof payload.muted === "boolean") setMuted(payload.muted)
-          else setMuted(false)
-          setVolume(clamp(Math.round(payload.volume), 0, 100))
-          break
-        }
-        case "setMuted": {
-          setMuted(payload.muted)
-          break
-        }
-        case "setShuffle": {
-          setShuffle(payload.shuffle)
-          break
-        }
-        case "setRepeat": {
-          setRepeat(payload.repeat)
-          break
-        }
-        case "addTrackById": {
-          setTracks((prev) => {
-            if (prev.some((t) => t.id === payload.id)) return prev
-            if (!prev.length) setCurrentId(payload.id)
-            return [
-              {
-                id: payload.id,
-                title: PENDING_TITLE,
-                artist: "Fetching details…",
-              },
-              ...prev,
-            ]
-          })
-          void resolveTrackMeta(payload.id)
-          break
-        }
-        case "addSearchResult": {
-          setTracks((prev) => {
-            if (prev.some((t) => t.id === payload.track.id)) return prev
-            if (!prev.length) setCurrentId(payload.track.id)
-            return [payload.track, ...prev]
-          })
-          break
-        }
-        case "playSearchResult": {
-          setSearchOpen(false)
-          setPlaylistsOpen(false)
-          setSessionOpen(false)
-          const wasSame = payload.track.id === stateRef.current.currentId
-          setTracks((prev) =>
-            prev.some((t) => t.id === payload.track.id)
-              ? prev
-              : [payload.track, ...prev],
-          )
-          setCurrentId(payload.track.id)
-          intendedPlayRef.current = true
-          setPlaying(true)
-          if (wasSame) playerRef.current?.playVideo?.()
-          break
-        }
-        case "deleteTrack": {
-          setTracks((prev) => {
-            const index = prev.findIndex((t) => t.id === payload.id)
-            if (index < 0) return prev
-            const next = prev.filter((t) => t.id !== payload.id)
-            if (payload.id === stateRef.current.currentId && next.length) {
-              setCurrentId(next[Math.min(index, next.length - 1)].id)
-            } else if (payload.id === stateRef.current.currentId) {
-              intendedPlayRef.current = false
-              playerRef.current?.stopVideo?.()
-              setCurrentId(null)
-              setPlaying(false)
-              setTime(0)
-              setScrubTime(null)
-              setDuration(0)
-            }
-            return next
-          })
-          break
-        }
-        case "restoreTrack": {
-          setTracks((prev) => {
-            if (prev.some((t) => t.id === payload.track.id)) return prev
-            const next = [...prev]
-            next.splice(Math.min(payload.index, next.length), 0, payload.track)
-            if (payload.wasCurrent) setCurrentId(payload.track.id)
-            return next
-          })
-          break
-        }
-        case "moveTrack": {
-          setTracks((prev) => {
-            const from = prev.findIndex((t) => t.id === payload.id)
-            const to = from + payload.delta
-            if (from < 0 || to < 0 || to >= prev.length) return prev
-            const next = [...prev]
-            const [moved] = next.splice(from, 1)
-            next.splice(to, 0, moved)
-            return next
-          })
-          break
-        }
-        case "reorderTo": {
-          setTracks((prev) => {
-            const from = prev.findIndex((t) => t.id === payload.dragId)
-            const to = prev.findIndex((t) => t.id === payload.targetId)
-            if (from < 0 || to < 0 || from === to) return prev
-            const next = [...prev]
-            const [moved] = next.splice(from, 1)
-            next.splice(to, 0, moved)
-            return next
-          })
-          break
-        }
-        case "playPlaylist": {
-          const nextTracks = payload.playlist.tracks.map((item) => ({
-            ...item,
-          }))
-          const first = nextTracks[0]
-          if (!first) break
-          setSearchOpen(false)
-          setPlaylistsOpen(false)
-          setSessionOpen(false)
-          const wasSame = first.id === stateRef.current.currentId
-          setTracks(nextTracks)
-          setQuery("")
-          setCurrentId(first.id)
-          intendedPlayRef.current = true
-          setPlaying(true)
-          if (wasSame) playerRef.current?.loadVideoById?.(first.id)
-          break
-        }
-        case "restoreQueue": {
-          const prevCurrent = stateRef.current.currentId
-          setTracks(payload.tracks)
-          setCurrentId(payload.currentId)
-          intendedPlayRef.current = payload.playing
-          setPlaying(payload.playing)
-          const player = playerRef.current
-          if (!payload.currentId) player?.stopVideo?.()
-          else if (payload.currentId === prevCurrent) {
-            if (payload.playing) player?.playVideo?.()
-            else player?.pauseVideo?.()
-          }
-          break
-        }
-        case "appendPlaylist": {
-          setTracks((prev) => {
-            const queuedIds = new Set(prev.map((item) => item.id))
-            const additions = payload.playlist.tracks
-              .filter((item) => !queuedIds.has(item.id))
-              .map((item) => ({ ...item }))
-            if (!additions.length) return prev
-            if (!prev.length) {
-              intendedPlayRef.current = false
-              setCurrentId(additions[0].id)
-              setPlaying(false)
-            }
-            return [...additions, ...prev]
-          })
-          break
-        }
-        case "saveCurrentQueue": {
-          const trimmedName = payload.name.trim()
-          if (!trimmedName) break
-          setSavedPlaylists((prev) => [
-            {
-              id:
-                globalThis.crypto?.randomUUID?.() ??
-                `playlist-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-              name: trimmedName,
-              tracks: stateRef.current.tracks.map((item) => ({ ...item })),
-              savedAt: new Date().toISOString(),
-            },
-            ...prev,
-          ])
-          break
-        }
-        case "createPlaylist": {
-          const trimmedName = payload.name.trim()
-          if (!trimmedName || !payload.tracks.length) break
-          setSavedPlaylists((prev) => [
-            {
-              id:
-                globalThis.crypto?.randomUUID?.() ??
-                `playlist-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-              name: trimmedName,
-              tracks: payload.tracks.map((item) => ({ ...item })),
-              savedAt: new Date().toISOString(),
-            },
-            ...prev,
-          ])
-          break
-        }
-        case "updatePlaylist": {
-          setSavedPlaylists((prev) =>
-            prev.map((item) =>
-              item.id === payload.playlist.id ? payload.playlist : item,
-            ),
-          )
-          break
-        }
-        case "deletePlaylist": {
-          setSavedPlaylists((prev) =>
-            prev.filter((item) => item.id !== payload.id),
-          )
-          break
-        }
-        case "restorePlaylist": {
-          setSavedPlaylists((prev) => {
-            if (prev.some((item) => item.id === payload.playlist.id)) return prev
-            const next = [...prev]
-            next.splice(
-              Math.max(0, payload.index),
-              0,
-              payload.playlist,
-            )
-            return next
-          })
-          break
-        }
-      }
-    },
-    [playing, advanceLocal, notify, resolveTrackMeta],
-  )
-
-  const executeRemoteCommandRef = useRef(executeRemoteCommand)
-  executeRemoteCommandRef.current = executeRemoteCommand
-
-  const startHostSession = useCallback(
-    async (requestedCode?: string, silent = false) => {
-      setSessionBusy(true)
-      setSessionError("")
-      try {
-        const snap = buildSnapshot()
-        const created = await apiCreateSession(clientId, snap, requestedCode)
-        processedCommandIdsRef.current.clear()
-        ackedCommandListRef.current = created.ackCommandIds ?? []
-        broadcastClientsRef.current.clear()
-        setSessionRole("host")
-        setSessionCode(created.code)
-        setSessionConnectedClients(created.connectedClients)
-        setLastRemoteAction(null)
-        saveActiveSession({ role: "host", code: created.code })
-        saveLocalSessionBackup(created.code, snap, ackedCommandListRef.current)
-        if (!silent) {
-          notify(`Session ${formatSessionCode(created.code)} started`)
-        }
-      } finally {
-        setSessionBusy(false)
-      }
-    },
-    [buildSnapshot, clientId, notify],
-  )
-
-  const joinRemoteSession = useCallback(
-    async (rawInput: string, silent = false) => {
-      const parsedCode = parseSessionCodeInput(rawInput)
-      if (!parsedCode) {
-        setSessionError(
-          "Enter a valid 6-character session code or paste a session link.",
-        )
-        return
-      }
-      if (sessionRoleRef.current === "host" && sessionCodeRef.current === parsedCode) {
-        setSessionError("This device is already hosting that session.")
-        return
-      }
-      setSessionBusy(true)
-      setSessionError("")
-      try {
-        const joined = await apiJoinSession(parsedCode, clientId)
-        if (!joined) {
-          setSessionError(
-            "Could not find an active session for that code. Make sure the host session is running.",
-          )
-          return
-        }
-        // Pause local player while controlling another device
-        intendedPlayRef.current = false
-        playerRef.current?.pauseVideo?.()
-        unackedControllerCommandsRef.current.clear()
-        setSessionRole("controller")
-        setSessionCode(joined.code)
-        setSessionConnectedClients(joined.connectedClients)
-        applyHostSnapshot(joined.snapshot, joined.ackCommandIds)
-        saveActiveSession({ role: "controller", code: joined.code })
-        setSessionOpen(false)
-        if (!silent) {
-          notify(`Connected to session ${formatSessionCode(joined.code)}`)
-        }
-      } finally {
-        setSessionBusy(false)
-      }
-    },
-    [clientId, applyHostSnapshot, notify],
-  )
-
-  const endHostSession = useCallback(() => {
-    const code = sessionCodeRef.current
-    if (code) {
-      broadcastRef.current?.post({ type: "ended", code })
-      removeLocalSessionBackup(code)
-      void apiEndSession(code, clientId)
-    }
-    setSessionRole(null)
-    setSessionCode(null)
-    setSessionConnectedClients(0)
-    setLastRemoteAction(null)
-    saveActiveSession(null)
-    setSessionOpen(false)
-    notify("Remote session ended")
-  }, [clientId, notify])
-
-  const leaveRemoteSession = useCallback(
-    (reason?: string) => {
-      const code = sessionCodeRef.current
-      if (code) {
-        broadcastRef.current?.post({ type: "leave", code, clientId })
-        void apiLeaveSession(code, clientId)
-      }
-      unackedControllerCommandsRef.current.clear()
-      setSessionRole(null)
-      setSessionCode(null)
-      setSessionConnectedClients(0)
-      saveActiveSession(null)
-      setSessionOpen(false)
-      // Remove ?session= query param from URL if present so refreshing stays local
-      if (window.location.search.includes("session=")) {
-        const url = new URL(window.location.href)
-        url.searchParams.delete("session")
-        window.history.replaceState({}, "", url.toString())
-      }
-      notify(reason ?? "Disconnected from remote session")
-    },
-    [clientId, notify],
-  )
-
-  const copySessionCode = useCallback(async () => {
-    if (!sessionCode) return
-    const formatted = formatSessionCode(sessionCode)
-    try {
-      await navigator.clipboard.writeText(formatted)
-      notify(`Copied code ${formatted}`)
-    } catch {
-      notify(`Session code: ${formatted}`)
-    }
-  }, [sessionCode, notify])
-
-  const copySessionShareLink = useCallback(async () => {
-    if (!sessionCode) return
-    const shareUrl = buildSessionShareUrl(sessionCode)
-    try {
-      await navigator.clipboard.writeText(shareUrl)
-      notify("Control link copied to clipboard")
-    } catch {
-      notify(`Share link: ${shareUrl}`)
-    }
-  }, [sessionCode, notify])
-
-  const shareSessionLink = useCallback(async () => {
-    if (!sessionCode || typeof navigator.share !== "function") return
-    const formatted = formatSessionCode(sessionCode)
-    const shareUrl = buildSessionShareUrl(sessionCode)
-    try {
-      await navigator.share({
-        title: `Tugtog Session ${formatted}`,
-        text: `Control my Tugtog music queue and playlists with code ${formatted}:`,
-        url: shareUrl,
-      })
-    } catch {
-      /* user dismissed native share sheet */
-    }
-  }, [sessionCode])
-
-  /* ---- auto-join from ?session=CODE or resume from sessionStorage ---- */
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    const urlSession = params.get("session")
-    const parsedFromUrl = urlSession ? parseSessionCodeInput(urlSession) : null
-    if (parsedFromUrl) {
-      void joinRemoteSession(parsedFromUrl)
-      return
-    }
-    const persisted = loadActiveSession()
-    if (!persisted) return
-    if (persisted.role === "host") {
-      void startHostSession(persisted.code, true)
-    } else if (persisted.role === "controller") {
-      void joinRemoteSession(persisted.code, true)
-    }
-    // Run once on initial mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  /* ---- BroadcastChannel + Server-Sent Events + HTTP sync loop ---- */
-  useEffect(() => {
-    if (!sessionRole || !sessionCode) return
-
-    const broadcast = openSessionBroadcast(
-      (msg) => {
-        if (msg.code !== sessionCode) return
-        if (sessionRole === "host") {
-          if (msg.type === "command") {
-            broadcastClientsRef.current.set(msg.command.clientId, Date.now())
-            setSessionConnectedClients((prev) =>
-              Math.max(prev, broadcastClientsRef.current.size),
-            )
-            executeRemoteCommandRef.current(msg.command)
-          } else if (msg.type === "join") {
-            broadcastClientsRef.current.set(msg.clientId, Date.now())
-            setSessionConnectedClients((prev) =>
-              Math.max(prev, broadcastClientsRef.current.size),
-            )
-            const snap = buildSnapshotRef.current()
-            const acks = ackedCommandListRef.current
-            broadcast.post({
-              type: "snapshot",
-              code: sessionCode,
-              snapshot: snap,
-              ackCommandIds: acks,
-            })
-          } else if (msg.type === "leave") {
-            broadcastClientsRef.current.delete(msg.clientId)
-            setSessionConnectedClients(broadcastClientsRef.current.size)
-          }
-        } else if (sessionRole === "controller") {
-          if (msg.type === "snapshot") {
-            applyHostSnapshot(msg.snapshot, msg.ackCommandIds)
-          } else if (msg.type === "ended") {
-            leaveRemoteSession("Host ended the session")
-          }
-        }
-      },
-      {
-        code: sessionCode,
-        role: sessionRole,
-        clientId,
-        getLatestSnapshotEnvelope: () => ({
-          type: "snapshot",
-          code: sessionCode,
-          snapshot: buildSnapshotRef.current(),
-          ackCommandIds: ackedCommandListRef.current,
-        }),
-      },
-    )
-    broadcastRef.current = broadcast
-
-    if (sessionRole === "controller") {
-      broadcast.post({ type: "join", code: sessionCode, clientId })
-    }
-
-    const closeEventStream = openSessionEventStream(
-      sessionCode,
-      sessionRole,
-      clientId,
-      (event) => {
-        if (sessionRole === "host") {
-          if (event.type === "commands") {
-            setSessionConnectedClients((prev) =>
-              Math.max(
-                prev,
-                event.connectedClients,
-                broadcastClientsRef.current.size,
-              ),
-            )
-            for (const cmd of event.commands) {
-              executeRemoteCommandRef.current(cmd)
-            }
-          } else if (event.type === "presence") {
-            setSessionConnectedClients(
-              Math.max(
-                event.connectedClients,
-                broadcastClientsRef.current.size,
-              ),
-            )
-          }
-        } else if (sessionRole === "controller") {
-          if (event.type === "snapshot") {
-            setSessionConnectedClients(event.connectedClients)
-            applyHostSnapshot(event.snapshot, event.ackCommandIds)
-          } else if (event.type === "presence") {
-            setSessionConnectedClients(event.connectedClients)
-          } else if (event.type === "ended") {
-            leaveRemoteSession("Host ended the session")
-          }
-        }
-      },
-    )
-
-    const pollInterval = window.setInterval(async () => {
-      const polled = await apiPollSession(sessionCode, sessionRole, clientId)
-      if (!polled) return
-      if (sessionRole === "host") {
-        setSessionConnectedClients(
-          Math.max(polled.connectedClients, broadcastClientsRef.current.size),
-        )
-        if (polled.pendingCommands.length > 0) {
-          for (const cmd of polled.pendingCommands) {
-            executeRemoteCommandRef.current(cmd)
-          }
-        }
-      } else if (sessionRole === "controller") {
-        setSessionConnectedClients(polled.connectedClients)
-        applyHostSnapshot(polled.snapshot, polled.ackCommandIds)
-      }
-    }, 1000)
-
-    return () => {
-      window.clearInterval(pollInterval)
-      closeEventStream()
-      broadcast.close()
-      broadcastRef.current = null
-    }
-  }, [
-    sessionRole,
-    sessionCode,
-    clientId,
-    applyHostSnapshot,
-    leaveRemoteSession,
-  ])
-
-  /* ---- Host: broadcast snapshot immediately on state change ---- */
-  useEffect(() => {
-    if (sessionRole !== "host" || !sessionCode) return
-    const snap = buildSnapshot()
-    const acks = ackedCommandListRef.current
-    saveLocalSessionBackup(sessionCode, snap, acks)
-    broadcastRef.current?.post({
-      type: "snapshot",
-      code: sessionCode,
-      snapshot: snap,
-      ackCommandIds: acks,
-    })
-    void apiSyncSession(sessionCode, clientId, snap, acks).then((res) => {
-      if (!res) return
-      setSessionConnectedClients(
-        Math.max(res.connectedClients, broadcastClientsRef.current.size),
-      )
-      if (res.pendingCommands.length > 0) {
-        for (const cmd of res.pendingCommands) {
-          executeRemoteCommandRef.current(cmd)
-        }
-      }
-    })
-    // Intentionally exclude `time` so 250ms position ticks don't flood POSTs;
-    // position is synced on structural state changes and on a 1.5s heartbeat below.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    sessionRole,
-    sessionCode,
-    clientId,
-    tracks,
-    currentId,
-    playing,
-    buffering,
-    duration,
-    volume,
-    muted,
-    repeat,
-    shuffle,
-    savedPlaylists,
-  ])
-
-  /* ---- Host: periodic position sync while playing ---- */
-  const latestTimeRef = useRef({ time, duration })
-  latestTimeRef.current = { time, duration }
-  useEffect(() => {
-    if (sessionRole !== "host" || !sessionCode || !playing) return
-    const timer = window.setInterval(() => {
-      const snap: SessionSnapshot = {
-        tracks: stateRef.current.tracks,
-        currentId: stateRef.current.currentId,
-        playing: true,
-        buffering,
-        time: latestTimeRef.current.time,
-        duration: latestTimeRef.current.duration,
-        volume,
-        muted,
-        repeat: stateRef.current.repeat,
-        shuffle: stateRef.current.shuffle,
-        playlists: savedPlaylists,
-        updatedAt: Date.now(),
-        rev: sessionRevRef.current,
-      }
-      const acks = ackedCommandListRef.current
-      saveLocalSessionBackup(sessionCode, snap, acks)
-      broadcastRef.current?.post({
-        type: "snapshot",
-        code: sessionCode,
-        snapshot: snap,
-        ackCommandIds: acks,
-      })
-      void apiSyncSession(sessionCode, clientId, snap, acks)
-    }, 1500)
-    return () => window.clearInterval(timer)
-  }, [
-    sessionRole,
-    sessionCode,
-    clientId,
-    playing,
-    buffering,
-    volume,
-    muted,
-    savedPlaylists,
-  ])
 
   const nextTheme =
     THEME_ORDER[(THEME_ORDER.indexOf(theme) + 1) % THEME_ORDER.length]
@@ -3245,84 +2964,25 @@ function TugtogPlayerApp() {
         <div className="flex min-w-0 items-center gap-3">
           <div className="neu-sm grid h-14 w-14 shrink-0 place-items-center rounded-2xl p-1.5 sm:h-[68px] sm:w-[68px] sm:rounded-3xl sm:p-2">
             <img
-              src="/icon-192.png"
+              src={logoUrl}
               alt=""
               className="h-full w-full object-contain"
             />
           </div>
           <div className="min-w-0">
             <p className="brand-text font-display truncate text-xl font-extrabold leading-none sm:text-3xl">
-              Tugtog
+              Youtugtog
             </p>
             <p
               className="mt-1 truncate text-[0.68rem] font-medium sm:text-xs"
               style={{ color: "var(--text-muted)" }}
             >
-              Build and play music queues
+              Tugtog Pinoy anytime
             </p>
           </div>
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
-          <button
-            type="button"
-            onClick={openSessionModal}
-            aria-pressed={sessionRole !== null}
-            className={`neu-btn hidden cursor-pointer items-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold sm:flex ${
-              sessionRole !== null ? "is-pressed" : ""
-            }`}
-            style={{
-              color:
-                sessionRole !== null ? "var(--accent-text)" : "var(--text)",
-            }}
-          >
-            {sessionRole !== null && (
-              <span
-                className="relative flex h-2.5 w-2.5 shrink-0"
-                aria-hidden="true"
-              >
-                <span
-                  className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-75"
-                  style={{ background: "var(--accent)" }}
-                />
-                <span
-                  className="relative inline-flex h-2.5 w-2.5 rounded-full"
-                  style={{ background: "var(--accent)" }}
-                />
-              </span>
-            )}
-            <Icon.Broadcast size={17} />
-            {sessionCode ? formatSessionCode(sessionCode) : "Remote"}
-          </button>
-          <span className="relative sm:hidden">
-            <IconButton
-              label={
-                sessionCode
-                  ? `Remote session ${formatSessionCode(sessionCode)}`
-                  : "Remote session"
-              }
-              onClick={openSessionModal}
-              pressed={sessionRole !== null}
-              size={44}
-            >
-              <Icon.Broadcast size={18} />
-            </IconButton>
-            {sessionRole !== null && (
-              <span
-                className="pointer-events-none absolute top-1 right-1 flex h-2.5 w-2.5"
-                aria-hidden="true"
-              >
-                <span
-                  className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-75"
-                  style={{ background: "var(--accent)" }}
-                />
-                <span
-                  className="relative inline-flex h-2.5 w-2.5 rounded-full"
-                  style={{ background: "var(--accent)" }}
-                />
-              </span>
-            )}
-          </span>
           <button
             type="button"
             onClick={() => openPlaylists("library")}
@@ -3372,208 +3032,83 @@ function TugtogPlayerApp() {
         </div>
       </header>
 
-      {/* Live Session Banner (never covers the player) ---------------- */}
-      {sessionRole !== null && sessionCode !== null && (
-        <div
-          role="region"
-          aria-label="Active remote session"
-          className="neu-sm mx-auto mt-4 flex max-w-6xl flex-wrap items-center justify-between gap-3 rounded-2xl px-3.5 py-2.5 sm:px-5 sm:py-3"
-        >
-          <div className="flex min-w-0 items-center gap-3">
-            <span
-              className="relative flex h-3 w-3 shrink-0"
-              aria-hidden="true"
-            >
-              <span
-                className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-75"
-                style={{ background: "var(--accent)" }}
-              />
-              <span
-                className="relative inline-flex h-3 w-3 rounded-full"
-                style={{ background: "var(--accent)" }}
-              />
-            </span>
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <span
-                  className="text-xs font-extrabold sm:text-sm"
-                  style={{ color: "var(--text-strong)" }}
-                >
-                  {sessionRole === "host"
-                    ? "Hosting session"
-                    : "Controlling host"}
-                </span>
-                <span
-                  className="neu-inset font-display rounded-lg px-2.5 py-0.5 text-xs font-extrabold tracking-wider sm:text-sm"
-                  style={{ color: "var(--accent-text)" }}
-                >
-                  {formatSessionCode(sessionCode)}
-                </span>
-                <span
-                  className="text-[0.7rem] font-semibold"
-                  style={{ color: "var(--text-muted)" }}
-                >
-                  {sessionRole === "host"
-                    ? sessionConnectedClients > 0
-                      ? `· ${sessionConnectedClients} ${
-                          sessionConnectedClients === 1 ? "device" : "devices"
-                        } connected`
-                      : "· Waiting for devices…"
-                    : "· Live remote control"}
-                </span>
-              </div>
-              {sessionRole === "host" && lastRemoteAction && (
-                <p
-                  className="mt-0.5 truncate text-[0.68rem]"
-                  style={{ color: "var(--text-muted)" }}
-                >
-                  Latest remote action: {lastRemoteAction}
-                </p>
-              )}
-            </div>
-          </div>
+      {/* Mobile backdrop for Queue modal effect */}
+      <div
+        ref={backdropRef}
+        aria-hidden="true"
+        className="mobile-backdrop pointer-events-none fixed inset-0 z-[5] bg-[rgba(0,0,0,0.6)] opacity-0 fold:hidden"
+      />
 
-          <div className="flex shrink-0 items-center gap-2">
-            <button
-              type="button"
-              onClick={copySessionCode}
-              className="neu-btn flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold"
-            >
-              <Icon.Copy size={14} />
-              Copy code
-            </button>
-            <button
-              type="button"
-              onClick={openSessionModal}
-              className="neu-btn rounded-xl px-3 py-2 text-xs font-bold"
-            >
-              {sessionRole === "host" ? "Share" : "Info"}
-            </button>
-            <button
-              type="button"
-              onClick={
-                sessionRole === "host"
-                  ? endHostSession
-                  : () => leaveRemoteSession()
-              }
-              className="neu-btn rounded-xl px-3 py-2 text-xs font-bold"
-              style={{ color: "var(--danger)" }}
-            >
-              {sessionRole === "host" ? "End" : "Disconnect"}
-            </button>
-          </div>
-        </div>
-      )}
-
-      <main className="mx-auto mt-6 grid max-w-6xl gap-5 sm:mt-8 sm:gap-6 lg:grid-cols-[minmax(0,400px)_minmax(0,1fr)] lg:gap-8">
+      {/* Two panes from `fold` (600px) rather than `lg`: that is Android's
+          "medium" window class, and an unfolded foldable sits inside it. The
+          player column is narrower there than at `lg` so the queue still gets
+          usable width on a ~750px screen. `.app-main` is the hook for the
+          posture rules in index.css. */}
+      <main className="app-main mx-auto mt-6 grid max-w-6xl gap-5 sm:mt-8 sm:gap-6 fold:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] fold:gap-6 lg:grid-cols-[minmax(0,400px)_minmax(0,1fr)] lg:gap-8">
         {/* Now playing ------------------------------------------------ */}
         <section
+          ref={playerCardRef}
           aria-label="Player"
           /* min-w-0: grid items default to min-width:auto, which lets long
              track titles push the card wider than the viewport. */
-          className="neu min-w-0 rounded-[1.75rem] p-4 min-[360px]:p-5 sm:rounded-[2rem] sm:p-6 lg:sticky lg:top-6 lg:self-start"
+          className="app-player neu min-w-0 rounded-[1.75rem] p-4 min-[360px]:p-5 sm:rounded-[2rem] sm:p-6 sticky top-5 sm:top-6 fold:top-6 fold:self-start z-0"
         >
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center justify-between gap-2">
             <p
               className="font-display text-[0.65rem] font-bold uppercase tracking-[0.3em]"
               style={{ color: "var(--text-muted)" }}
             >
-              {sessionRole === "controller"
-                ? buffering
-                  ? "Host buffering"
-                  : playing
-                    ? "Playing on host"
-                    : "Paused on host"
-                : buffering
-                  ? "Buffering"
-                  : playing
-                    ? "Playing now"
-                    : "Paused"}
+              {buffering ? "Buffering" : playing ? "Playing now" : "Paused"}
             </p>
-            <span
-              className="inline-flex items-center gap-2 text-[0.65rem] font-bold"
-              style={{ color: "var(--text-muted)" }}
-            >
-              <span className="tugtog-disc" aria-hidden="true" />
-              {sessionRole === "controller" && sessionCode
-                ? `Remote · ${formatSessionCode(sessionCode)}`
-                : "via YouTube"}
-            </span>
+            <div className="neu-inset stage-switch" role="group" aria-label="View">
+              {(
+                [
+                  ["art", "Art"],
+                  ["lyrics", "Lyrics"],
+                  ["video", "Video"],
+                ] as [Stage, string][]
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setStage(value)}
+                  aria-pressed={stage === value}
+                  className={stage === value ? "is-on" : ""}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
 
-          {/* The official player is never hidden, masked, or covered while it
-              can play, preserving its controls, attribution, and ads. */}
-          <div className="-mx-7 mt-5 min-[360px]:-mx-8 sm:mx-0 sm:mt-6">
-            <div className="disc-video">
-              <div
-                ref={mountRef}
-                className={
-                  sessionRole === "controller"
-                    ? "pointer-events-none invisible"
-                    : ""
-                }
+          {/* Art → circular disc. Lyrics → synced list. Video → 16:9 frame.
+              All three occupy the same slot. The player mount is always
+              rendered (parked off screen unless Video) so it is never
+              re-created and audio keeps playing across every switch. */}
+          <div className="mt-5 sm:mt-6">
+            {stage === "art" && (
+              <CircularCover
+                trackId={track?.id}
+                playing={playing}
+                progress={progress}
+                ready={ready}
               />
-              {!ready && sessionRole !== "controller" && (
+            )}
+            {stage === "lyrics" && (
+              <LyricsStage
+                lyrics={lyrics}
+                loading={lyricsLoading}
+                getTime={getLiveTime}
+                playing={playing}
+                onSeek={seekTo}
+                offset={lyricOffset}
+                onOffsetChange={setLyricOffset}
+              />
+            )}
+            <div className={`disc-video ${showVideo ? "" : "is-parked"}`}>
+              <div ref={mountRef} />
+              {showVideo && !ready && (
                 <div className="disc-video__loading">loading player…</div>
-              )}
-              {sessionRole === "controller" && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center overflow-hidden bg-slate-950 text-white">
-                  {track ? (
-                    <>
-                      <img
-                        src={`https://i.ytimg.com/vi/${track.id}/hqdefault.jpg`}
-                        alt=""
-                        className="absolute inset-0 h-full w-full object-cover opacity-55"
-                        draggable={false}
-                      />
-                      <div
-                        className="absolute inset-0"
-                        style={{
-                          background:
-                            "linear-gradient(180deg, rgba(10,12,24,0.35) 0%, rgba(10,12,24,0.82) 100%)",
-                        }}
-                      />
-                      <button
-                        type="button"
-                        onClick={toggle}
-                        aria-label={
-                          playing ? "Pause host player" : "Play on host player"
-                        }
-                        className="relative z-10 flex flex-col items-center gap-2.5 rounded-2xl px-5 py-3 text-center transition-transform active:scale-95"
-                      >
-                        <span
-                          className="grid h-14 w-14 place-items-center rounded-full shadow-lg"
-                          style={{
-                            background: "var(--accent-fill)",
-                            color: "#fff",
-                          }}
-                        >
-                          {playing ? (
-                            <Icon.Pause size={24} />
-                          ) : (
-                            <Icon.Play size={24} />
-                          )}
-                        </span>
-                        <span className="inline-flex items-center gap-2 rounded-full bg-black/55 px-3 py-1 text-[0.68rem] font-bold tracking-wider uppercase backdrop-blur-sm">
-                          {playing && <Equalizer />}
-                          {playing
-                            ? "Playing on host screen"
-                            : "Paused on host screen"}
-                        </span>
-                      </button>
-                    </>
-                  ) : (
-                    <div className="px-6 text-center">
-                      <p className="text-xs font-bold tracking-widest uppercase text-white/80">
-                        Remote Controller Connected
-                      </p>
-                      <p className="mt-1.5 text-xs text-white/60">
-                        Add or select a song below to start playback on the host
-                        device.
-                      </p>
-                    </div>
-                  )}
-                </div>
               )}
             </div>
           </div>
@@ -3617,16 +3152,15 @@ function TugtogPlayerApp() {
           </div>
 
           {/* Transport */}
-          <div className="mt-5 flex items-center justify-center gap-1.5 min-[360px]:gap-2.5 sm:gap-4">
+          <div
+            ref={transportRef}
+            className="mt-5 flex items-center justify-center gap-1.5 min-[360px]:gap-2.5 sm:gap-4"
+          >
             <IconButton
               label={shuffle ? "Shuffle on" : "Shuffle off"}
               onClick={() => {
-                const nextShuffle = !shuffle
-                setShuffle(nextShuffle)
-                if (sessionRoleRef.current === "controller") {
-                  sendRemoteCommand({ type: "setShuffle", shuffle: nextShuffle })
-                }
-                notify(nextShuffle ? "Shuffle on" : "Shuffle off")
+                setShuffle((s) => !s)
+                notify(shuffle ? "Shuffle off" : "Shuffle on")
               }}
               sizeClass="h-10 w-10 min-[360px]:h-11 min-[360px]:w-11"
               pressed={shuffle}
@@ -3685,13 +3219,7 @@ function TugtogPlayerApp() {
           <div className="mt-5 flex items-center gap-3">
             <button
               type="button"
-              onClick={() => {
-                const nextMuted = !muted
-                setMuted(nextMuted)
-                if (sessionRoleRef.current === "controller") {
-                  sendRemoteCommand({ type: "setMuted", muted: nextMuted })
-                }
-              }}
+              onClick={() => setMuted((m) => !m)}
               aria-label={muted ? "Unmute" : "Mute"}
               aria-pressed={muted}
               className="grid h-10 w-10 shrink-0 cursor-pointer place-items-center rounded-full"
@@ -3706,32 +3234,12 @@ function TugtogPlayerApp() {
                 value={muted ? 0 : volume}
                 max={100}
                 onPreview={(v) => {
-                  const rounded = Math.round(v)
                   setMuted(false)
-                  setVolume(rounded)
-                  if (
-                    sessionRoleRef.current === "controller" &&
-                    Date.now() - volumeCmdThrottleRef.current > 120
-                  ) {
-                    volumeCmdThrottleRef.current = Date.now()
-                    sendRemoteCommand({
-                      type: "setVolume",
-                      volume: rounded,
-                      muted: false,
-                    })
-                  }
+                  setVolume(Math.round(v))
                 }}
                 onCommit={(v) => {
-                  const rounded = Math.round(v)
                   setMuted(false)
-                  setVolume(rounded)
-                  if (sessionRoleRef.current === "controller") {
-                    sendRemoteCommand({
-                      type: "setVolume",
-                      volume: rounded,
-                      muted: false,
-                    })
-                  }
+                  setVolume(Math.round(v))
                 }}
                 label="Volume"
                 valueText={`${muted ? 0 : Math.round(volume)} percent`}
@@ -3778,7 +3286,7 @@ function TugtogPlayerApp() {
         {/* Queue ------------------------------------------------------ */}
         <section
           aria-label="Queue"
-          className="neu min-w-0 rounded-[1.75rem] p-5 sm:rounded-[2rem] sm:p-6"
+          className="neu min-w-0 min-h-[80vh] rounded-[1.75rem] shadow-2xl p-5 sm:rounded-[2rem] sm:p-6 relative z-10 fold:min-h-0 fold:shadow-none"
         >
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
@@ -3786,7 +3294,7 @@ function TugtogPlayerApp() {
                 className="font-display text-base font-extrabold sm:text-lg"
                 style={{ color: "var(--text-strong)" }}
               >
-                {sessionRole === "controller" ? "Host queue" : "Your queue"}
+                Your queue
               </h2>
               <p
                 className="mt-0.5 text-[0.7rem] font-semibold tabular-nums"
@@ -3832,11 +3340,7 @@ function TugtogPlayerApp() {
                   setAddError("")
                 }}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault()
-                    if (e.nativeEvent.isComposing || e.keyCode === 229) return
-                    addTrack()
-                  }
+                  if (e.key === "Enter") addTrack()
                 }}
                 placeholder="Paste a YouTube link…"
                 inputMode="url"
@@ -3929,22 +3433,31 @@ function TugtogPlayerApp() {
           className="text-[0.7rem] leading-relaxed"
           style={{ color: "var(--text-muted)" }}
         >
-          Tugtog plays through YouTube’s official visible player, so views
-          and ads count normally. Playback pauses whenever the page is hidden.
-          Opening Search or Playlists also pauses the visible player.
+          Youtugtog plays through YouTube’s official embedded player, so views
+          and ads count normally. Switch to{" "}
+          <strong style={{ color: "var(--text)" }}>Video</strong> any time to
+          bring the picture back.
         </p>
-        <nav className="mt-2 flex flex-wrap justify-center gap-x-4 gap-y-2 text-xs font-bold">
-          <a href="/privacy">Privacy</a>
-          <a href="/terms">Terms</a>
-          <a href="/support">Support</a>
-          <a href="https://www.youtube.com/t/terms" rel="noreferrer">
-            YouTube Terms
-          </a>
-        </nav>
       </footer>
 
+      {showMini && (
+        <MiniPlayer
+          track={track}
+          playing={playing}
+          progress={progress}
+          onToggle={toggle}
+          onNext={() => advance(1)}
+          onPrev={() => advance(-1)}
+          onExpand={() =>
+            playerCardRef.current?.scrollIntoView({
+              behavior: "smooth",
+              block: "start",
+            })
+          }
+        />
+      )}
+
       <SearchModal
-        playlists={savedPlaylists}
         open={searchOpen}
         onClose={closeSearch}
         query={searchQuery}
@@ -3975,30 +3488,6 @@ function TugtogPlayerApp() {
         onAppend={appendSavedPlaylist}
         onDelete={deleteSavedPlaylist}
         onUpdate={updateSavedPlaylist}
-        onCreate={createSavedPlaylist}
-        searchEndpoint={SEARCH_PROXY}
-        currentId={currentId}
-      />
-
-      <SessionModal
-        open={sessionOpen}
-        onClose={closeSessionModal}
-        role={sessionRole}
-        sessionCode={sessionCode}
-        connectedClients={sessionConnectedClients}
-        lastRemoteAction={lastRemoteAction}
-        busy={sessionBusy}
-        error={sessionError}
-        onClearError={() => setSessionError("")}
-        onStartSession={() => void startHostSession()}
-        onJoinSession={(input) => void joinRemoteSession(input)}
-        onEndSession={endHostSession}
-        onLeaveSession={() => leaveRemoteSession()}
-        onCopyCode={() => void copySessionCode()}
-        onCopyShareLink={() => void copySessionShareLink()}
-        onNativeShare={() => void shareSessionLink()}
-        queueCount={tracks.length}
-        playlistsCount={savedPlaylists.length}
       />
 
       <Toast toast={toast} onDismiss={() => setToast(null)} />

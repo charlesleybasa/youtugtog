@@ -1,8 +1,19 @@
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 @import 'tailwindcss';
 
+/* `fold` matches Android's "medium" window size class (>= 600dp), the point
+   at which Google's large-screen guidance says to switch a list-detail UI to
+   two panes. It is deliberately below Tailwind's `sm` (640px): an unfolded
+   Galaxy Z Fold lands around 700-760px wide, so gating the two-pane layout on
+   `lg` (1024px) meant the inner screen never reached it and showed a stretched
+   phone layout instead. The cover screen (~385px) stays below this and keeps
+   the single-column layout, which is correct for its width. */
+@theme {
+  --breakpoint-fold: 600px;
+}
+
 /* =====================================================================
- * Tugtog — Soft UI Evolution
+ * Youtugtog — Soft UI Evolution
  * Neumorphism kept, but with WCAG-AA text contrast and real focus states.
  * Every token below is measured: muted text >= 4.5:1 on its own panel,
  * white-on-accent-fill >= 4.6:1 across the whole gradient.
@@ -54,7 +65,18 @@
   --ease: cubic-bezier(0.32, 0.72, 0, 1);
   --ease-back: cubic-bezier(0.34, 1.56, 0.64, 1);
 
+  --disc: clamp(190px, 56vw, 288px);
   color-scheme: light;
+}
+
+/* From `fold` up the player shares the width with the queue instead of owning
+   it, so the disc has to fit a column rather than the viewport. The old rule
+   here sized it for a full-width card (42vw) and would overflow the left pane
+   on an unfolded foldable. */
+@media (min-width: 600px) {
+  :root {
+    --disc: clamp(170px, 28vw, 280px);
+  }
 }
 
 .dark {
@@ -237,17 +259,152 @@ body {
   filter: grayscale(0.35);
 }
 
-.tugtog-disc {
-  display: inline-block;
-  width: 1.35rem;
-  height: 1.35rem;
-  flex: 0 0 auto;
+/* =====================================================================
+ * The disc — circular cover art, vinyl behaviour
+ * ===================================================================== */
+.disc-wrap {
+  position: relative;
+  width: var(--disc);
+  height: var(--disc);
+  display: grid;
+  place-items: center;
+  margin-inline: auto;
+}
+
+/* Ambient glow that breathes only while audio is playing */
+.disc-halo {
+  position: absolute;
+  inset: -6%;
   border-radius: 50%;
-  background:
-    radial-gradient(circle at center, var(--panel) 0 13%, transparent 14%),
-    repeating-radial-gradient(circle at center, transparent 0 19%, rgba(255, 255, 255, 0.18) 20% 21%),
-    var(--accent-fill);
-  box-shadow: 0 4px 12px var(--art-glow);
+  background: radial-gradient(circle, var(--art-glow) 0%, transparent 68%);
+  opacity: 0;
+  transition: opacity var(--dur-slow) var(--ease);
+  pointer-events: none;
+}
+
+.is-playing .disc-halo {
+  opacity: 1;
+  animation: halo-breathe 4.2s var(--ease) infinite;
+}
+
+@keyframes halo-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.75;
+  }
+  50% {
+    transform: scale(1.07);
+    opacity: 1;
+  }
+}
+
+.disc-ring {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+  pointer-events: none;
+}
+
+.disc-ring__track {
+  stroke: var(--sh-dark);
+  opacity: 0.9;
+}
+
+.dark .disc-ring__track {
+  stroke: var(--sh-light);
+  opacity: 1;
+}
+
+.disc-ring__value {
+  stroke: url(#discGrad);
+  stroke-linecap: round;
+  transition: stroke-dashoffset var(--dur) linear;
+}
+
+/* Raised outer bezel */
+.disc-plate {
+  position: relative;
+  width: 87%;
+  height: 87%;
+  border-radius: 50%;
+  background: var(--panel);
+  box-shadow:
+    10px 10px 24px var(--sh-dark),
+    -10px -10px 24px var(--sh-light);
+  display: grid;
+  place-items: center;
+  transition:
+    box-shadow var(--dur-slow) var(--ease),
+    transform var(--dur-slow) var(--ease-back);
+}
+
+/* Recessed groove the art sits in */
+.disc-groove {
+  position: relative;
+  width: 88%;
+  height: 88%;
+  border-radius: 50%;
+  overflow: hidden;
+  box-shadow:
+    inset 7px 7px 14px var(--sh-dark),
+    inset -7px -7px 14px var(--sh-light);
+}
+
+.disc-art {
+  position: absolute;
+  inset: 5%;
+  width: 90%;
+  height: 90%;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--sh-dark);
+  animation: disc-spin 14s linear infinite;
+  animation-play-state: paused;
+  transition: opacity var(--dur-slow) var(--ease);
+}
+
+.is-playing .disc-art {
+  animation-play-state: running;
+}
+
+@keyframes disc-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Vinyl spindle + light sweep */
+.disc-spindle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 13%;
+  height: 13%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: var(--panel);
+  box-shadow:
+    inset 2px 2px 5px var(--sh-dark),
+    inset -2px -2px 5px var(--sh-light),
+    0 0 0 4px rgba(255, 255, 255, 0.1);
+  pointer-events: none;
+}
+
+.disc-sheen {
+  position: absolute;
+  inset: 5%;
+  border-radius: 50%;
+  pointer-events: none;
+  background: linear-gradient(
+    128deg,
+    rgba(255, 255, 255, 0.42) 0%,
+    rgba(255, 255, 255, 0.06) 32%,
+    transparent 55%
+  );
+  mix-blend-mode: overlay;
 }
 
 .skeleton {
@@ -266,13 +423,246 @@ body {
   animation: shimmer 1.5s linear infinite;
 }
 
+/* Small rotating art used by the sticky mini player */
+.mini-art {
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--sh-dark);
+  animation: disc-spin 14s linear infinite;
+  animation-play-state: paused;
+}
+
+.mini-art.is-spinning {
+  animation-play-state: running;
+}
+
 @keyframes shimmer {
   to {
     background-position: -220% 0;
   }
 }
 
-/* Official YouTube player: always visible in its native 16:9 frame. */
+/* =====================================================================
+ * YouTube video frame — rectangular 16:9, shown only in Video mode
+ * The official IFrame player stays mounted and rendered (so playback,
+ * views and ads all behave normally). In audio mode it is parked off
+ * screen rather than torn down, so audio keeps playing across the toggle;
+ * toggling Video reveals it as a rounded rectangle in the disc's place.
+ * ===================================================================== */
+/* =====================================================================
+ * Stage switch (Art / Lyrics / Video)
+ * ===================================================================== */
+.stage-switch {
+  display: flex;
+  gap: 2px;
+  border-radius: 999px;
+  padding: 3px;
+}
+
+.stage-switch button {
+  border: 0;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.4rem 0.6rem;
+  border-radius: 999px;
+  transition:
+    color var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease),
+    background var(--dur) var(--ease);
+}
+
+@media (min-width: 360px) {
+  .stage-switch button {
+    padding: 0.4rem 0.8rem;
+  }
+}
+
+.stage-switch button.is-on {
+  color: var(--accent-text);
+  background: var(--panel);
+  box-shadow:
+    3px 3px 7px var(--sh-dark),
+    -3px -3px 7px var(--sh-light);
+}
+
+/* =====================================================================
+ * Lyrics — line-level synced (LRCLIB provides no word-level timing)
+ * ===================================================================== */
+.lyrics-stage {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.lyrics-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  overscroll-behavior: contain;
+  /* Padding so the first and last lines can still reach the centre anchor. */
+  padding: 42% 0.25rem;
+  text-align: center;
+  scroll-behavior: smooth;
+}
+
+.lyrics-scroll::-webkit-scrollbar {
+  width: 0;
+}
+
+.lyrics-line {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.45;
+  padding: 0.42rem 0.5rem;
+  border-radius: 0.75rem;
+  /* De-emphasis uses colour + scale + blur, never a low opacity fade:
+     on this soft-grey panel a 40%-opacity line drops under 4.5:1. */
+  color: var(--text-muted);
+  transform: scale(0.96);
+  transform-origin: center;
+  transition:
+    color var(--dur) var(--ease),
+    transform 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter var(--dur) var(--ease);
+}
+
+.lyrics-line.is-far {
+  /* Blur only lines 2+ away — blurred text is itself a contrast hazard. */
+  filter: blur(1.4px);
+}
+
+.lyrics-line.is-active {
+  color: var(--text-strong);
+  transform: scale(1.06);
+  filter: none;
+}
+
+@media (hover: hover) {
+  .lyrics-line:hover {
+    color: var(--accent-text);
+  }
+}
+
+.lyrics-line.is-plain {
+  cursor: default;
+  transform: none;
+  filter: none;
+  color: var(--text);
+}
+
+.lyrics-badge,
+.lyrics-empty {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.lyrics-empty {
+  margin: auto;
+  padding: 0 1.5rem;
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+.lyrics-jump {
+  position: absolute;
+  bottom: 2.6rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  cursor: pointer;
+  border: 0;
+  font: inherit;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.45rem 0.9rem;
+  border-radius: 999px;
+  color: var(--accent-contrast);
+  background: var(--accent-fill);
+  box-shadow: 0 6px 18px var(--art-glow);
+  animation: fade-in var(--dur) var(--ease);
+}
+
+.lyrics-offset {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding-top: 0.35rem;
+  color: var(--text-muted);
+  font-size: 0.66rem;
+  font-weight: 700;
+}
+
+.lyrics-offset button {
+  width: 26px;
+  height: 26px;
+  border: 0;
+  cursor: pointer;
+  border-radius: 50%;
+  background: var(--panel);
+  color: inherit;
+  font: inherit;
+  font-size: 0.9rem;
+  line-height: 1;
+  box-shadow:
+    3px 3px 6px var(--sh-dark),
+    -3px -3px 6px var(--sh-light);
+}
+
+.lyrics-offset button:active {
+  box-shadow:
+    inset 2px 2px 5px var(--sh-dark),
+    inset -2px -2px 5px var(--sh-light);
+}
+
+.lyrics-offset span {
+  min-width: 3.2rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.lyrics-skeletons {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.lyrics-skel {
+  height: 0.85rem;
+  border-radius: 999px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lyrics-scroll {
+    scroll-behavior: auto;
+  }
+  .lyrics-line {
+    /* Keep the highlight; drop the movement and the blur. */
+    transform: none !important;
+    filter: none !important;
+  }
+}
+
 .disc-video {
   position: relative;
   width: 100%;
@@ -295,6 +685,21 @@ body {
   border: 0;
 }
 
+.disc-video.is-parked {
+  position: fixed;
+  bottom: 0;
+  right: 0;
+  width: 320px;
+  height: 180px;
+  aspect-ratio: auto;
+  border-radius: 0;
+  box-shadow: none;
+  opacity: 0;
+  z-index: -1;
+  pointer-events: none;
+  animation: none;
+}
+
 .disc-video__loading {
   position: absolute;
   inset: 0;
@@ -303,12 +708,6 @@ body {
   font-size: 0.7rem;
   color: #9aa0bd;
   background: #000;
-}
-
-@media (max-width: 639px) {
-  .disc-video {
-    border-radius: 0;
-  }
 }
 
 /* =====================================================================
@@ -466,7 +865,7 @@ body {
 }
 
 /* =====================================================================
- * Overlays and toasts
+ * Overlays, toasts, mini player
  * ===================================================================== */
 .modal-backdrop {
   background: var(--scrim);
@@ -499,77 +898,24 @@ body {
   }
 }
 
+.mini-player {
+  animation: mini-up 300ms var(--ease);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@keyframes mini-up {
+  from {
+    opacity: 0;
+    transform: translateY(110%);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 .toast {
   animation: toast-in 300ms var(--ease-back);
-}
-
-/* =====================================================================
- * Legal and support pages
- * ===================================================================== */
-.legal-shell {
-  width: min(100% - 2rem, 58rem);
-  margin-inline: auto;
-  padding-block: 1.5rem 4rem;
-}
-
-.legal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1.25rem;
-  margin-bottom: 1.5rem;
-}
-
-.legal-header nav {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 0.75rem 1rem;
-  font-size: 0.875rem;
-  font-weight: 700;
-}
-
-.legal-header a,
-.legal-card a {
-  color: var(--accent-text);
-  text-underline-offset: 0.2em;
-}
-
-.legal-card {
-  border-radius: var(--r-xl);
-  padding: clamp(1.25rem, 4vw, 3rem);
-  line-height: 1.7;
-}
-
-.legal-card h1 {
-  margin: 0 0 0.5rem;
-  color: var(--text-strong);
-  font-size: clamp(1.8rem, 5vw, 2.7rem);
-  font-weight: 800;
-  letter-spacing: -0.035em;
-  line-height: 1.12;
-}
-
-.legal-card h2 {
-  margin: 2rem 0 0.5rem;
-  color: var(--text-strong);
-  font-size: 1.2rem;
-  font-weight: 800;
-}
-
-.legal-card p {
-  margin: 0.75rem 0;
-}
-
-@media (max-width: 520px) {
-  .legal-header {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .legal-header nav {
-    justify-content: flex-start;
-  }
 }
 
 @keyframes toast-in {
@@ -636,6 +982,52 @@ button {
   }
 }
 
+/* =====================================================================
+ * Foldable postures
+ *
+ * A fully unfolded Galaxy Z Fold is one continuous display, so the width
+ * breakpoint above is all it needs. These two rules handle the cases where
+ * the OS reports the window as split into segments, which a width query
+ * cannot detect:
+ *
+ *   - horizontal segments: a hinge running vertically between two panes
+ *     (dual-screen devices, and book posture on some foldables). Sizing the
+ *     columns to the reported segments keeps the hinge in the gutter instead
+ *     of down the middle of the artwork or the queue list.
+ *   - vertical segments: tabletop posture, screen folded flat like a laptop.
+ *     Two columns would put half of each pane on a surface facing away from
+ *     the user, so stack instead and keep the player in the upper segment.
+ *
+ * Both degrade silently: browsers without viewport-segment support simply
+ * never match, leaving the width-based layout in charge.
+ * ===================================================================== */
+
+@media (horizontal-viewport-segments: 2) {
+  .app-main {
+    max-width: none;
+    grid-template-columns:
+      env(viewport-segment-width 0 0)
+      env(viewport-segment-width 1 0);
+    column-gap: calc(
+      env(viewport-segment-left 1 0) - env(viewport-segment-right 0 0)
+    );
+  }
+}
+
+@media (vertical-viewport-segments: 2) {
+  .app-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Sticky positioning fights the fold here: the player would slide under the
+     hinge as the queue scrolls. Pin it to the top segment instead. */
+  .app-player {
+    position: static;
+    max-height: env(viewport-segment-height 0 0);
+    overflow-y: auto;
+  }
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
@@ -661,12 +1053,45 @@ button {
     scroll-behavior: auto !important;
   }
 
-  .eq span {
+  .disc-art,
+  .eq span,
+  .disc-halo {
     animation: none !important;
   }
 
   .neu-btn:hover,
   .accent-btn:hover {
     transform: none !important;
+  }
+}
+
+/* =====================================================================
+ * Scroll-Driven Animations: Blur Player behind Queue on Mobile
+ * ===================================================================== */
+@supports (animation-timeline: scroll()) and (animation-range: 0% 100%) {
+  @media (max-width: 599px) {
+    @keyframes blur-player {
+      to {
+        filter: blur(8px);
+      }
+    }
+    
+    @keyframes fade-backdrop {
+      to {
+        opacity: 1;
+      }
+    }
+    
+    .app-player {
+      animation: blur-player linear both;
+      animation-timeline: scroll(root block);
+      animation-range: 0px 300px;
+    }
+    
+    .mobile-backdrop {
+      animation: fade-backdrop linear both;
+      animation-timeline: scroll(root block);
+      animation-range: 0px 300px;
+    }
   }
 }

@@ -1,0 +1,10 @@
+# pnpm blocks dependency install scripts by default and exits non-zero when it
+# has to skip one, which fails CI installs (Vercel included). esbuild arrives
+# via the @vercel/node devDependency; its install script only links the
+# prebuilt platform binary, and `vercel dev` needs a working esbuild to compile
+# the /api functions, so allow it explicitly.
+allowBuilds:
+  esbuild: true
+
+packages:
+  - "."
