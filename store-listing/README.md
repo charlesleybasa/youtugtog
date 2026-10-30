@@ -7,7 +7,7 @@ Generated from the app itself — screenshots are real emulator captures, not mo
 | `icon-512.png` | App icon | 512×512 |
 | `feature-graphic-1024x500.png` | Feature graphic | 1024×500 |
 | `screenshots/phone-1-player.png` | Phone screenshot | 1080×2400 |
-| `screenshots/phone-2-queue.png` | Phone screenshot | 1080×2400 |
+| `screenshots/phone-2-dark.png` | Phone screenshot | 1080×2400 |
 | `screenshots/foldable-1-twopane.png` | Tablet / large screen | 1968×2184 |
 
 Play requires the icon, the feature graphic, and at least 2 phone screenshots.
@@ -40,6 +40,15 @@ With an emulator running and the app installed:
 
     adb shell am start -n com.youtugtog.app/.MainActivity
     adb exec-out screencap -p > store-listing/screenshots/phone-1-player.png
+
+Playback must be running before you capture — autoplay is blocked, so tap the
+play button first and give it a few seconds, or the player sits at 0:00 / --:--
+and looks broken. Known issue: do NOT capture the queue panel on Android. In
+WebView 155 the queue sheet renders horizontally offset, clipping "Your queue"
+and pushing "Save queue" past the right edge. The same markup is correct in a
+desktop browser at the same CSS width, so it is a WebView bug, not a layout
+bug. The queue is shown in the large-screen shot instead, where it renders
+correctly.
 
 For the large-screen shot, override the display first and reset it after:
 

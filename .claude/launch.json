@@ -3,7 +3,7 @@
   "configurations": [
     {
       "name": "vite-dev",
-      "runtimeExecutable": "/Users/rli/.nvm/versions/node/v22.14.0/bin/node",
+      "runtimeExecutable": "/Users/rli/.local/share/mise/installs/node/22.12.0/bin/node",
       "runtimeArgs": [
         "node_modules/vite/bin/vite.js",
         "--host",

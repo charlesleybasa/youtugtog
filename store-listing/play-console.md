@@ -55,7 +55,7 @@ Character limits are Play's, and every field below is already inside them.
 
 **App icon** — `store-listing/icon-512.png` (512×512) ✓
 **Feature graphic** — `store-listing/feature-graphic-1024x500.png` (1024×500) ✓
-**Phone screenshots** — `screenshots/phone-1-player.png`, `phone-2-queue.png` (1080×2400) ✓
+**Phone screenshots** — `screenshots/phone-1-player.png`, `phone-2-dark.png` (1080×2400) ✓
 **Tablet / large screen** — `screenshots/foldable-1-twopane.png` (1968×2184) ✓
 
 **App category** — Music & Audio
