@@ -1,6 +1,6 @@
-# Youtugtog
+# Tugtog
 
-A minimal YouTube playlist player built with React, Vite, and Tailwind CSS.
+A minimal music player built with React, Vite, and Tailwind CSS.
 
 ## Local setup
 

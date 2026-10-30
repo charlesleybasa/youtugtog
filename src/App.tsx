@@ -9,7 +9,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react"
 import { flushSync } from "react-dom"
-import logoUrl from "./imports/ChatGPT_Image_Jul_30__2026__01_48_16_PM.png"
+import logoUrl from "./imports/tugtog-logo.png"
 import SavedPlaylistsModal, {
   type SavedPlaylist,
 } from "./components/SavedPlaylistsModal"
@@ -17,7 +17,7 @@ import { pickNextShuffledId } from "./shuffle"
 import { apiUrl } from "./api"
 
 /* --------------------------------------------------------------------- *
- * Youtugtog — "Tugtog Pinoy anytime".
+ * Tugtog — "Tugtog Pinoy anytime".
  *
  * Playback runs through the OFFICIAL YouTube IFrame Player API. We never
  * extract or re-host audio streams — the real player stays mounted and
@@ -2220,7 +2220,6 @@ export default function App() {
         playerVars: {
           playsinline: 1,
           rel: 0,
-          modestbranding: 1,
           iv_load_policy: 3,
         },
         events: {
@@ -2318,7 +2317,7 @@ export default function App() {
       navigator.mediaSession.metadata = new MediaMetadata({
         title: track.title,
         artist: track.artist,
-        album: "Youtugtog",
+        album: "Tugtog",
         artwork: [
           { src: rowThumb(track.id), sizes: "320x180", type: "image/jpeg" },
           { src: coverArt(track.id), sizes: "1280x720", type: "image/jpeg" },
@@ -2971,7 +2970,7 @@ export default function App() {
           </div>
           <div className="min-w-0">
             <p className="brand-text font-display truncate text-xl font-extrabold leading-none sm:text-3xl">
-              Youtugtog
+              Tugtog
             </p>
             <p
               className="mt-1 truncate text-[0.68rem] font-medium sm:text-xs"
@@ -3433,10 +3432,17 @@ export default function App() {
           className="text-[0.7rem] leading-relaxed"
           style={{ color: "var(--text-muted)" }}
         >
-          Youtugtog plays through YouTube’s official embedded player, so views
+          Tugtog plays through YouTube’s official embedded player, so views
           and ads count normally. Switch to{" "}
           <strong style={{ color: "var(--text)" }}>Video</strong> any time to
           bring the picture back.
+        </p>
+        <p
+          className="mt-2 text-[0.65rem] leading-relaxed"
+          style={{ color: "var(--text-muted)" }}
+        >
+          Tugtog is not affiliated with, endorsed by, or sponsored by YouTube
+          or Google LLC. YouTube is a trademark of Google LLC.
         </p>
       </footer>
 

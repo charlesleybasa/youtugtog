@@ -25,7 +25,7 @@ const config: CapacitorConfig = {
   // Permanent once published to the Play Store — change it now if you want a
   // different namespace, not after the first upload.
   appId: 'com.youtugtog.app',
-  appName: 'Youtugtog',
+  appName: 'Tugtog',
   webDir: 'dist',
   server: {
     androidScheme: 'https',

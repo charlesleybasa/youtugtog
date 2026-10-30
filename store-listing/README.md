@@ -15,6 +15,25 @@ The large-screen shot is optional but Play grades large-screen quality
 separately and surfaces it to foldable and tablet users, so it is worth
 including given the app has a real two-pane layout.
 
+## Regenerating the icon and feature graphic
+
+Both are drawn from code so the mark stays reproducible. Run from the repo root:
+
+    python3 assets/make-icon.py             # masters -> assets/icon*.png
+    python3 assets/make-derived.py          # launcher mipmaps, splashes, web icons, icon-512
+    python3 assets/make-feature-graphic.py  # feature-graphic-1024x500.png
+
+`make-icon.py` holds the geometry: a Philippine sun and music note on a rounded
+tile. It is deliberately not a play triangle — the previous mark was, and Google
+Play cited it under the Impersonation policy, since a play triangle reads as both
+the YouTube and the Google Play logo. The feature graphic sets the wordmark in a
+single continuous gradient for the same reason; the old one split it into "You"
+in orange and "tugtog" in pink, echoing YouTube's own lockup.
+
+The wordmark renders in Avenir Next Heavy (a system font). The app itself uses
+Plus Jakarta Sans ExtraBold from Google Fonts; if you want the graphic to match
+exactly, drop the TTF next to these scripts and point `FONT` at it.
+
 ## Regenerating screenshots
 
 With an emulator running and the app installed:
