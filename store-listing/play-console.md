@@ -185,6 +185,12 @@ publish a new app under a new package name. Back both up somewhere off this lapt
 
 ## Before every future upload
 
+**`.env.capacitor` must exist first.** It is gitignored, so a fresh clone does not have
+it — copy `.env.capacitor.example` over it. Without `VITE_API_BASE_URL`, `/api/*` calls
+resolve against the WebView's own `https://localhost`, which serves `index.html` for
+unknown paths, so search and lyrics both return 200-with-HTML and die silently. The
+capacitor build now refuses to run without it rather than producing that app.
+
 `versionCode` in `android/app/build.gradle` must be strictly higher than any build Play has
 already accepted — including builds it rejected in review. Bump it, then:
 

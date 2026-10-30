@@ -28,6 +28,20 @@ export default defineConfig(({ mode }) => {
   const isCapacitorBuild = mode === 'capacitor'
   const env = loadEnv(mode, process.cwd(), '')
 
+  // Fail the build rather than ship an app that cannot reach its API.
+  // .env.capacitor is gitignored, so a fresh clone has no VITE_API_BASE_URL.
+  // Without it src/api.ts falls back to window.location.origin, which inside
+  // the WebView is https://localhost — and because the SPA serves index.html
+  // for unknown paths, every /api/* call then returns 200 with HTML instead
+  // of failing. Search and lyrics both go quietly dead in the shipped build.
+  if (isCapacitorBuild && !env.VITE_API_BASE_URL?.trim()) {
+    throw new Error(
+      'VITE_API_BASE_URL is not set for --mode capacitor.\n' +
+        'Copy .env.capacitor.example to .env.capacitor before building.\n' +
+        'Without it the Android build silently loses search and lyrics.',
+    )
+  }
+
   return {
     // Capacitor serves the bundle from the root of the WebView's own local
     // server, so asset URLs have to stay root-relative. FIGMA_PUBLIC_URL
