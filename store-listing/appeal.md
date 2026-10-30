@@ -3,20 +3,61 @@
 **Enforcement:** App suspended 30 Oct 2026, Impersonation policy.
 **Flagged fields:** Title (en-US), Short description (en-US), Hi-res icon (en-US).
 
-> **You get ONE appeal per enforcement action.** Do not file until the listing has
-> been updated, the new AAB (versionCode 3) is uploaded, and the non-compliant
-> bundle is moved to "Not included". Google's removal guidance warns that failing
-> to deactivate the old bundle makes the resubmission fail.
+## STATUS: APPEAL SUBMITTED
 
-## Order of operations
+Submitted 30 Oct 2026, 4:43 PM by charlesleyb24@gmail.com. Decision by email,
+up to 7 days. That was the one appeal available for this enforcement.
 
-1. Update the store listing — name, short description, full description, icon,
-   feature graphic, screenshots (all from `play-console.md`).
-2. Create a release with `app-release.aab` (versionCode 3 / versionName 1.1.0).
-   Put the old bundle under **Not included**.
-3. Only then: Policy status → **Appeal**.
+## Order of operations — appeal FIRST, fix after
 
-## Appeal text (copy-paste)
+The original plan here had it backwards. A suspended app cannot edit its store
+listing or upload a build at all: Play Console offers no Main store listing and
+no Test and release for it, and those URLs redirect to Home. The only action
+available is the appeal.
+
+The appeal form states it plainly: "If you understand what led to this issue and
+have a plan for how you will fix it, submit an appeal. If your appeal is
+approved, you must fix this issue before you send your app for review."
+
+So the sequence is:
+
+1. Appeal, describing the fix.  ← done
+2. If granted, the app is reinstated.
+3. Only then update the listing and upload `app-release.aab`
+   (versionCode 3 / 1.1.0), with the old bundle under **Not included** — Google's
+   removal guidance warns that failing to deactivate it makes resubmission fail.
+
+## Reason selected
+
+"I understand what led to this issue and will fix it" — not "I believe this is
+incorrect". The finding is correct and arguing it would be the wrong play.
+
+## Appeal text as submitted (996 / 1000 chars)
+
+The field caps at 1000 characters, so the longer draft below had to be cut.
+This is what actually went in:
+
+> We accept the finding and have prepared the fix.
+>
+> TITLE: renamed "Youtugtog" to "Tugtog". The original was the Filipino word
+> tugtog ("to play music"), but we accept that the "You" prefix reads as a
+> variant of the YouTube name, which the YouTube API Services Branding
+> Guidelines prohibit in an application name. The new name contains no variant
+> of YouTube.
+>
+> ICON: redesigned. The previous silhouette was a play triangle. The new icon is
+> a rounded-square tile with an original Philippine-sun and music-note mark, and
+> no play-button or store-logo shape.
+>
+> SHORT DESCRIPTION: rewritten to "Queue songs, follow synced lyrics, and sing
+> along. No account needed." It no longer leads with the YouTube brand.
+>
+> We have also redrawn the feature graphic, removed YouTube keyword stuffing
+> from our web metadata, and added a non-affiliation and trademark notice inside
+> the app. Playback has always used the official YouTube IFrame Player API. A
+> signed build with all of this is ready to upload on reinstatement.
+
+## Longer draft (kept for reference)
 
 Our app was suspended under the Impersonation policy for its title, icon, and
 short description. We agree with the finding and have removed the resemblance
