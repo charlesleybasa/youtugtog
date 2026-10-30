@@ -15,7 +15,7 @@ import { applyCors } from './_cors.js'
  * --------------------------------------------------------------------- */
 
 const LRCLIB = 'https://lrclib.net/api'
-const UA = 'Youtugtog (https://youtugtog.vercel.app)'
+const UA = 'Tugtog (https://youtugtog.vercel.app)'
 
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v)
 

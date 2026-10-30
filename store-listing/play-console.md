@@ -7,17 +7,17 @@ Character limits are Play's, and every field below is already inside them.
 
 ## 1. Store listing
 
-**App name** (30 max) — 9 chars
+**App name** (30 max) — 6 chars
 
-    Youtugtog
+    Tugtog
 
-**Short description** (80 max) — 67 chars
+**Short description** (80 max) — 68 chars
 
-    Search YouTube, build a queue, and sing along with synced lyrics.
+    Queue songs, follow synced lyrics, and sing along. No account needed.
 
 **Full description** (4000 max) — ~1,450 chars
 
-    Youtugtog is a music player for YouTube that stays out of your way.
+    Tugtog is a music player that stays out of your way.
 
     Search for a song, tap it, and it starts playing. Keep tapping and you build a
     queue — no playlist to create first, no account to make, no setup screen
@@ -25,11 +25,11 @@ Character limits are Play's, and every field below is already inside them.
 
     WHAT IT DOES
 
-    • Search every song on YouTube and play it instantly
+    • Search and play millions of songs instantly
     • Build a queue as you go, and reorder or remove tracks any time
     • Shuffle that actually shuffles — every song plays once before any repeats
     • Repeat one track or the whole queue
-    • Word-by-word synced lyrics that scroll with the song, when they exist
+    • Line-by-line synced lyrics that scroll with the song, when they exist
     • Save a queue as a playlist and load it back later
     • Switch between the player and full video whenever you want to watch
     • Light and dark themes, or follow your system setting
@@ -44,17 +44,18 @@ Character limits are Play's, and every field below is already inside them.
 
     ABOUT PLAYBACK
 
-    Videos play through YouTube's official player, so creators get their views and
-    their ad revenue exactly as they would on YouTube itself. Playback pauses when
-    you leave the app, the same as the YouTube website. An internet connection is
-    required — nothing is downloaded for offline use.
+    Tugtog works with YouTube. Videos play through YouTube's official embedded
+    player, so creators get their views and their ad revenue exactly as they would
+    on YouTube itself. Playback pauses when you leave the app, the same as the
+    YouTube website. An internet connection is required — nothing is downloaded
+    for offline use.
 
-    Youtugtog is not affiliated with, endorsed by, or sponsored by YouTube or
+    Tugtog is not affiliated with, endorsed by, or sponsored by YouTube or
     Google LLC. YouTube is a trademark of Google LLC.
 
 **App icon** — `store-listing/icon-512.png` (512×512) ✓
 **Feature graphic** — `store-listing/feature-graphic-1024x500.png` (1024×500) ✓
-**Phone screenshots** — `screenshots/phone-1-player.png`, `phone-2-queue.png` (1080×2400) ✓
+**Phone screenshots** — `screenshots/phone-1-player.png`, `phone-2-dark.png` (1080×2400) ✓
 **Tablet / large screen** — `screenshots/foldable-1-twopane.png` (1968×2184) ✓
 
 **App category** — Music & Audio
@@ -149,17 +150,16 @@ on-device storage and never transmitted, and Play explicitly excludes on-device-
 ## 4. Release
 
 - **Format:** Android App Bundle — `android/app/build/outputs/bundle/release/app-release.aab` (3.4 MB)
-- **Release name:** `1.0.0 (1)`
+- **Release name:** `1.1.0 (3)`
 - **Signing:** signed with the upload key; opt in to **Play App Signing** when prompted
 - **Countries:** all, unless you want to start narrow
 
 **Release notes** (500 max per language):
 
-    First release.
+    New name, new look.
 
-    Search YouTube, queue up songs, and follow synced lyrics as they play.
-    Save queues as playlists, shuffle without repeats, and pick up where you
-    left off. No account needed.
+    Tugtog has a new name and a redesigned app icon. Everything else works
+    exactly as before — your saved queues and playlists carry over untouched.
 
 ---
 
@@ -184,6 +184,12 @@ publish a new app under a new package name. Back both up somewhere off this lapt
 ---
 
 ## Before every future upload
+
+**`.env.capacitor` must exist first.** It is gitignored, so a fresh clone does not have
+it — copy `.env.capacitor.example` over it. Without `VITE_API_BASE_URL`, `/api/*` calls
+resolve against the WebView's own `https://localhost`, which serves `index.html` for
+unknown paths, so search and lyrics both return 200-with-HTML and die silently. The
+capacitor build now refuses to run without it rather than producing that app.
 
 `versionCode` in `android/app/build.gradle` must be strictly higher than any build Play has
 already accepted — including builds it rejected in review. Bump it, then:
