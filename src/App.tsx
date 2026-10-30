@@ -2872,26 +2872,19 @@ export default function App() {
       !CSS.supports("(animation-timeline: scroll()) and (animation-range: 0% 100%)")
     ) {
       const handleScroll = () => {
+        if (!backdropRef.current) return
+
         if (window.innerWidth >= 600) {
-          if (playerCardRef.current) {
-            playerCardRef.current.style.filter = ""
-          }
-          if (backdropRef.current) {
-            backdropRef.current.style.opacity = "0"
-          }
+          backdropRef.current.style.opacity = "0"
           return
         }
 
-        const scrollY = window.scrollY
-        const maxScroll = 300
-        const progress = Math.min(1, Math.max(0, scrollY / maxScroll))
-
-        if (playerCardRef.current) {
-          playerCardRef.current.style.filter = `blur(${progress * 8}px)`
-        }
-        if (backdropRef.current) {
-          backdropRef.current.style.opacity = `${progress}`
-        }
+        // Opacity only. The blur comes from the backdrop's own
+        // backdrop-filter (see .mobile-backdrop in index.css); driving a
+        // `filter` on the player card from here re-rasterized that whole
+        // sticky layer every frame and Android WebView painted stale tiles.
+        const progress = Math.min(1, Math.max(0, window.scrollY / 300))
+        backdropRef.current.style.opacity = `${progress}`
       }
 
       window.addEventListener("scroll", handleScroll, { passive: true })

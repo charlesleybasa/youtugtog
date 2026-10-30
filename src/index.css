@@ -1068,26 +1068,32 @@ button {
 /* =====================================================================
  * Scroll-Driven Animations: Blur Player behind Queue on Mobile
  * ===================================================================== */
+/* The blur lives on the backdrop, not on .app-player.
+   Animating `filter` on that card is what the effect originally did, but the
+   card is large, `position: sticky`, and the filter value changed every frame,
+   so Chromium had to re-rasterize the whole layer per frame. Android WebView
+   composited stale tiles out of that: the queue panel below it painted twice
+   at two different scroll offsets, clipping "Your queue" to "our queue" and
+   doubling the filter row. Layout was always correct — only the paint was
+   wrong, which is why it never reproduced in a desktop browser.
+   The backdrop is already a fixed, viewport-sized layer that only animates
+   opacity, so blurring through it is both correct and far cheaper. */
+.mobile-backdrop {
+  /* Standard property only. Writing the -webkit- alias alongside it made the
+     minifier keep just the prefixed one, which Chromium no longer honours, so
+     the blur silently did nothing. The build adds prefixes where targets need
+     them. */
+  backdrop-filter: blur(8px);
+}
+
 @supports (animation-timeline: scroll()) and (animation-range: 0% 100%) {
   @media (max-width: 599px) {
-    @keyframes blur-player {
-      to {
-        filter: blur(8px);
-      }
-    }
-    
     @keyframes fade-backdrop {
       to {
         opacity: 1;
       }
     }
-    
-    .app-player {
-      animation: blur-player linear both;
-      animation-timeline: scroll(root block);
-      animation-range: 0px 300px;
-    }
-    
+
     .mobile-backdrop {
       animation: fade-backdrop linear both;
       animation-timeline: scroll(root block);

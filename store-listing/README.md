@@ -43,12 +43,13 @@ With an emulator running and the app installed:
 
 Playback must be running before you capture — autoplay is blocked, so tap the
 play button first and give it a few seconds, or the player sits at 0:00 / --:--
-and looks broken. Known issue: do NOT capture the queue panel on Android. In
-WebView 155 the queue sheet renders horizontally offset, clipping "Your queue"
-and pushing "Save queue" past the right edge. The same markup is correct in a
-desktop browser at the same CSS width, so it is a WebView bug, not a layout
-bug. The queue is shown in the large-screen shot instead, where it renders
-correctly.
+and looks broken.
+
+The queue panel used to paint wrong on Android (clipping "Your queue" to "our
+queue" and doubling the filter row) because the scroll effect animated
+`filter: blur()` on the sticky player card. That is fixed — see the comment on
+`.mobile-backdrop` in src/index.css — but it is worth a glance when capturing,
+since the underlying compositor behaviour was timing-dependent.
 
 For the large-screen shot, override the display first and reset it after:
 
