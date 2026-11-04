@@ -70,10 +70,10 @@ Character limits are Play's, and every field below is already inside them.
 
 **Contact details**
 - Email: `charlesleyb24@gmail.com` *(Play publishes this on your store page)*
-- Website: `https://youtugtog.vercel.app`
+- Website: `https://tugtog.vercel.app`
 - Phone: leave blank (optional)
 
-**Privacy policy URL** — `https://youtugtog.vercel.app/privacy.html`
+**Privacy policy URL** — `https://tugtog.vercel.app/privacy.html`
 Must be live before you submit. Deploy first, then open the URL yourself to confirm.
 
 ---
