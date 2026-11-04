@@ -3,6 +3,21 @@
 Everything the Play Console asks for, in the order it asks. Copy-paste ready.
 Character limits are Play's, and every field below is already inside them.
 
+> **Listing created 4 Nov 2026.** Play Console app ID `4973305557140995966`
+> (console URL `.../developers/5381648057768772517/app/4973305557140995966/`).
+> Status: Draft. Done so far — app created (Tugtog, com.tugtog.app, App, Free),
+> default store listing saved with name, short and full description, icon,
+> feature graphic and 2 phone screenshots.
+>
+> Still to do: App content declarations (privacy policy URL, ads, content
+> rating, data safety, target audience), a tablet screenshot, the closed test,
+> and the AAB upload.
+>
+> **The tablet screenshot was deliberately left out.** The saved
+> `foldable-1-twopane.png` still shows the old pink "Search YouTube" button and
+> predates the relabel to "Search songs", so it no longer matches the app.
+> Recapture it from the current release build before adding it.
+
 > **This is a NEW listing — `com.tugtog.app`.** The original
 > `com.youtugtog.app` was suspended for impersonation and its appeal was
 > denied, so that listing is finished and cannot be recovered. Google's own
