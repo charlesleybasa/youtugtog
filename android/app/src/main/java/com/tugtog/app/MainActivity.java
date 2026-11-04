@@ -1,4 +1,4 @@
-package com.youtugtog.app;
+package com.tugtog.app;
 
 import com.getcapacitor.BridgeActivity;
 

@@ -3,6 +3,13 @@
 Everything the Play Console asks for, in the order it asks. Copy-paste ready.
 Character limits are Play's, and every field below is already inside them.
 
+> **This is a NEW listing — `com.tugtog.app`.** The original
+> `com.youtugtog.app` was suspended for impersonation and its appeal was
+> denied, so that listing is finished and cannot be recovered. Google's own
+> instruction was to upload a new app under a new package name and a new app
+> name; see `appeal.md`. Create this as a brand-new app in Play Console, not
+> an update.
+
 ---
 
 ## 1. Store listing
@@ -149,17 +156,18 @@ on-device storage and never transmitted, and Play explicitly excludes on-device-
 
 ## 4. Release
 
-- **Format:** Android App Bundle — `android/app/build/outputs/bundle/release/app-release.aab` (3.4 MB)
-- **Release name:** `1.1.0 (3)`
-- **Signing:** signed with the upload key; opt in to **Play App Signing** when prompted
+- **Format:** Android App Bundle — `android/app/build/outputs/bundle/release/app-release.aab` (3.5 MB)
+- **Release name:** `1.0.0 (1)` — first release of a new listing
+- **Signing:** signed with the `tugtog` upload key; opt in to **Play App Signing** when prompted
 - **Countries:** all, unless you want to start narrow
 
 **Release notes** (500 max per language):
 
-    New name, new look.
+    First release.
 
-    Tugtog has a new name and a redesigned app icon. Everything else works
-    exactly as before — your saved queues and playlists carry over untouched.
+    Search for a song, queue it up, and follow line-by-line synced lyrics as it
+    plays. Save queues as playlists, shuffle without repeats, and pick up where
+    you left off. No account needed.
 
 ---
 
@@ -167,19 +175,25 @@ on-device storage and never transmitted, and Play explicitly excludes on-device-
 
 **1. The 12-tester rule.** If your developer account is a *personal* (not organization)
 account created after 13 Nov 2023, Google requires a closed test with **at least 12
-testers opted in continuously for 14 days** before the Production track unlocks. It is not
-a code problem and there is no way around it — start the closed test now so the clock runs
-while you finish the listing. Check Play Console → your account type; organization accounts
+testers opted in continuously for 14 days** before the Production track unlocks. This
+applies again — a new package means a new app, so none of the old listing's testing
+history carries over. It is not a code problem and there is no way around it; start the
+closed test the day you create the listing so the clock runs while you finish the rest. Check Play Console → your account type; organization accounts
 are exempt.
 
-**2. Keep the upload key alive.** `android/upload-keystore.jks` and
+**2. Keep the upload key alive.** `android/tugtog-upload.jks` and
 `android/keystore.properties` are gitignored, so they exist on this machine and nowhere
 else. Lose them and you cannot ship an update to this listing, ever — you would have to
-publish a new app under a new package name. Back both up somewhere off this laptop today.
+publish a new app under yet another package name. **Back both up off this laptop before
+you upload**, not after.
 
-    Key alias:  upload
+    Key alias:  tugtog
     Algorithm:  2048-bit RSA, SHA384withRSA
-    Valid:      17 Aug 2026 → 2 Jan 2054
+    Valid:      4 Nov 2026 → 22 Mar 2054
+
+`android/upload-keystore.jks` is the *old* key for the suspended
+`com.youtugtog.app`. It is useless now; do not sign with it. `keystore.properties`
+points at the tugtog key.
 
 ---
 
@@ -192,7 +206,8 @@ unknown paths, so search and lyrics both return 200-with-HTML and die silently. 
 capacitor build now refuses to run without it rather than producing that app.
 
 `versionCode` in `android/app/build.gradle` must be strictly higher than any build Play has
-already accepted — including builds it rejected in review. Bump it, then:
+already accepted for THIS package — including builds it rejected in review. The new
+listing starts at 1, so the first upload needs no bump. Then:
 
     npm run build:capacitor && npx cap sync android
     cd android && ./gradlew clean bundleRelease

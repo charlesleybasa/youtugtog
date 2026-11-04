@@ -24,7 +24,7 @@ import type { CapacitorConfig } from '@capacitor/cli'
 const config: CapacitorConfig = {
   // Permanent once published to the Play Store — change it now if you want a
   // different namespace, not after the first upload.
-  appId: 'com.youtugtog.app',
+  appId: 'com.tugtog.app',
   appName: 'Tugtog',
   webDir: 'dist',
   server: {
