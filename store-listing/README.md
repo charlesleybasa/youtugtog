@@ -38,7 +38,7 @@ exactly, drop the TTF next to these scripts and point `FONT` at it.
 
 With an emulator running and the app installed:
 
-    adb shell am start -n com.youtugtog.app/.MainActivity
+    adb shell am start -n com.tugtog.app/.MainActivity
     adb exec-out screencap -p > store-listing/screenshots/phone-1-player.png
 
 Playback must be running before you capture — autoplay is blocked, so tap the

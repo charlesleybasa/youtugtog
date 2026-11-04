@@ -3,10 +3,47 @@
 **Enforcement:** App suspended 30 Oct 2026, Impersonation policy.
 **Flagged fields:** Title (en-US), Short description (en-US), Hi-res icon (en-US).
 
-## STATUS: APPEAL SUBMITTED
+## STATUS: APPEAL DENIED — 31 Oct 2026
 
-Submitted 30 Oct 2026, 4:43 PM by charlesleyb24@gmail.com. Decision by email,
-up to 7 days. That was the one appeal available for this enforcement.
+Submitted 30 Oct 2026 4:43 PM, denied 31 Oct 2026 10:24 AM (ticket
+4-8938000042220). That was the one appeal available for this enforcement, so
+**this listing is finished**. `com.youtugtog.app` stays suspended.
+
+Google's reply:
+
+> We've reviewed your appeal request and found that your Youtugtog
+> (com.youtugtog.app) app isn't compliant with Google Play policy. [...] your
+> app is currently impersonating the brand "YouTube" without proper
+> authorization.
+
+They attached `com.youtugtog.app.png` as evidence — it is the **old
+play-triangle icon**. The appeal was judged against the listing as it still
+stood, which a suspended app cannot change. Describing the rebrand in the
+appeal text was never going to be enough; the reviewer looked at the live
+listing.
+
+To reinstate this listing they require signed documentation that the app is
+authorized to use the YouTube brand — an agreement, authorization letter, or
+licensing contract signed by both parties. Screenshots and emails are
+explicitly not accepted. That documentation does not exist and will not.
+
+### The route Google gives
+
+> Sign in to your Play Console account and upload a new app using **a new
+> package name and a new app name**.
+
+So the Tugtog work is right, but it ships as a **new app**, not an update:
+
+- New package ID (e.g. `ph.tugtog.app`) — `com.youtugtog.app` is burned
+- New upload keystore (back it up off the laptop this time)
+- New listing, built from `play-console.md`
+- On a personal account created after 13 Nov 2023, the 12-tester / 14-day
+  closed test applies again
+
+**A suspension is a strike against the developer account.** Google's reply says
+repeated violations can terminate it. The next listing has to be clean on the
+first try — which is an argument for shortening the "Search YouTube" button
+label to "Search", the one prominent YouTube brand use left in the assets.
 
 ## Order of operations — appeal FIRST, fix after
 

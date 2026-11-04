@@ -1679,7 +1679,7 @@ function SearchModal({
               className="font-display text-[0.68rem] font-bold uppercase tracking-[0.32em]"
               style={{ color: "var(--text-muted)" }}
             >
-              Search YouTube
+              Search songs
             </p>
             <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
               Add anything to your queue — it plays as audio.
@@ -2998,10 +2998,10 @@ export default function App() {
             className="accent-btn hidden cursor-pointer items-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold sm:flex"
           >
             <Icon.Search size={16} />
-            Search YouTube
+            Search songs
           </button>
           <span className="sm:hidden">
-            <IconButton label="Search YouTube" onClick={openSearch} size={46}>
+            <IconButton label="Search songs" onClick={openSearch} size={46}>
               <Icon.Search size={19} />
             </IconButton>
           </span>
